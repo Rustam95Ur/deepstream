@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nexus DeepStream · {{ settings.node_id }}</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="brand"><span class="mark" aria-hidden="true"></span> Nexus DeepStream</p>
+      <h1>{{ settings.node_name }}</h1>
+      <p class="muted">node_id <code>{{ settings.node_id }}</code></p>
+    </div>
+    <div class="status-card">
+      <p>
+        Pipeline
+        <strong class="{% if worker.running %}ok{% else %}muted{% endif %}">
+          {% if worker.running %}running{% else %}idle{% endif %}
+        </strong>
+      </p>
+      <p class="muted">{{ worker.detail }}</p>
+      {% if worker.last_error %}<p class="err">{{ worker.last_error }}</p>{% endif %}
+      <div class="row">
+        <form method="post" action="/ui/worker/start"><button type="submit">Start</button></form>
+        <form method="post" action="/ui/worker/stop"><button type="submit" class="ghost">Stop</button></form>
+        <form method="post" action="/ui/logout"><button type="submit" class="ghost">Выйти</button></form>
+      </div>
+    </div>
+  </header>
+
+  {% if message %}
+  <p class="banner" role="status">
+    {% if message == "settings_saved" %}Настройки сохранены
+    {% elif message == "camera_saved" %}Камера сохранена
+    {% elif message == "camera_deleted" %}Камера удалена
+    {% elif message == "worker_started" %}Pipeline запущен
+    {% elif message == "worker_stopped" %}Pipeline остановлен
+    {% else %}{{ message }}{% endif %}
+  </p>
+  {% endif %}
+
+  <main class="grid">
+    <section>
+      <h2>Настройки</h2>
+      <form method="post" action="/ui/settings" class="stack">
+        <label>node_id <input name="node_id" value="{{ settings.node_id }}" required /></label>
+        <label>node_name <input name="node_name" value="{{ settings.node_name }}" /></label>
+        <label>API token
+          <input name="api_token" type="password" value="{{ settings.api_token }}" placeholder="Bearer для API и входа" autocomplete="off" />
+        </label>
+        <label>cameras_url (GET)
+          <input name="cameras_url" value="{{ settings.cameras_url }}" placeholder="https://campus/.../ds/cameras?node_id=..." />
+        </label>
+        <label>cameras_poll_sec <input type="number" name="cameras_poll_sec" value="{{ settings.cameras_poll_sec }}" /></label>
+        <label>triggers_url (POST)
+          <input name="triggers_url" value="{{ settings.triggers_url }}" placeholder="https://campus/.../ds/triggers" />
+        </label>
+        <label class="check"><input type="checkbox" name="enable_http_sink" {% if settings.enable_http_sink %}checked{% endif %} /> HTTP sink</label>
+        <label class="check"><input type="checkbox" name="enable_celery_sink" {% if settings.enable_celery_sink %}checked{% endif %} /> Celery sink (legacy)</label>
+        <label>celery_broker_url <input name="celery_broker_url" value="{{ settings.celery_broker_url }}" /></label>
+        <fieldset>
+          <legend>Триггеры</legend>
+          <label>cooldown_s <input type="number" step="0.1" name="cooldown_s" value="{{ settings.cooldown_s }}" /></label>
+          <label>presence_min_people <input type="number" name="presence_min_people" value="{{ settings.presence_min_people }}" /></label>
+          <label>presence_sustain_s <input type="number" step="0.1" name="presence_sustain_s" value="{{ settings.presence_sustain_s }}" /></label>
+          <label>min_tracks <input type="number" name="min_tracks" value="{{ settings.min_tracks }}" /></label>
+          <label>converge_dist_bh <input type="number" step="0.1" name="converge_dist_bh" value="{{ settings.converge_dist_bh }}" /></label>
+          <label>sustain_s <input type="number" step="0.1" name="sustain_s" value="{{ settings.sustain_s }}" /></label>
+          <label>vif_iou_thresh <input type="number" step="0.01" name="vif_iou_thresh" value="{{ settings.vif_iou_thresh }}" /></label>
+          <label>vif_sustain_s <input type="number" step="0.1" name="vif_sustain_s" value="{{ settings.vif_sustain_s }}" /></label>
+          <label>clip_pre_s <input type="number" step="0.1" name="clip_pre_s" value="{{ settings.clip_pre_s }}" /></label>
+          <label>clip_post_s <input type="number" step="0.1" name="clip_post_s" value="{{ settings.clip_post_s }}" /></label>
+          <label>conf_threshold <input type="number" step="0.01" name="conf_threshold" value="{{ settings.conf_threshold }}" /></label>
+          <label>max_streams <input type="number" name="max_streams" value="{{ settings.max_streams }}" /></label>
+        </fieldset>
+        <label class="check"><input type="checkbox" name="auto_start_pipeline" {% if settings.auto_start_pipeline %}checked{% endif %} /> auto_start_pipeline</label>
+        <button type="submit">Сохранить</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>Камеры ({{ cameras|length }})</h2>
+      <form method="post" action="/ui/cameras/add" class="stack add-cam">
+        <label>id <input name="camera_id" placeholder="auto if empty" /></label>
+        <label>name <input name="name" /></label>
+        <label>RTSP / URI <input name="main_uri" required placeholder="rtsp://..." /></label>
+        <label class="check"><input type="checkbox" name="enabled" checked /> enabled</label>
+        <button type="submit">Добавить / обновить</button>
+      </form>
+
+      <table>
+        <thead>
+          <tr><th>id</th><th>name</th><th>uri</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for c in cameras %}
+          <tr>
+            <td><code>{{ c.id }}</code>{% if not c.enabled %} <span class="muted">off</span>{% endif %}</td>
+            <td>{{ c.name }}</td>
+            <td class="uri">{{ c.main_uri }}</td>
+            <td>
+              <form method="post" action="/ui/cameras/{{ c.id }}/delete">
+                <button type="submit" class="ghost danger" aria-label="Удалить камеру {{ c.id }}">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="muted">Нет камер. Добавьте здесь или через API.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p class="muted api-hint">
+        API: <code>GET/POST /api/v1/cameras</code>
+        <code>GET /api/v1/health</code>
+        docs <a href="/docs">/docs</a>
+      </p>
+    </section>
+  </main>
+</body>
+</html>

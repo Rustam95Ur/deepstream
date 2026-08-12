@@ -1,0 +1,14 @@
+data/
+!data/.gitkeep
+*.pyc
+__pycache__/
+.venv/
+venv/
+.env
+*.engine
+*.onnx
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% if setup %}Доступ{% else %}Вход{% endif %} · Nexus DeepStream</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="auth">
+  <main class="auth-shell">
+    <aside class="auth-brand">
+      <p class="brand"><span class="mark" aria-hidden="true"></span> Nexus</p>
+      <h1 class="auth-title">DeepStream</h1>
+      <p class="lede">{{ settings.node_name }}</p>
+      <p class="muted auth-id"><code>{{ settings.node_id }}</code></p>
+    </aside>
+
+    <section class="auth-panel">
+      <form method="post" action="/ui/login" class="auth-form" autocomplete="on">
+        {% if setup %}
+        <h2>Доступ</h2>
+        <p class="lede">Задайте токен для этой ноды.</p>
+
+        <label for="token">Токен
+          <input
+            id="token"
+            name="token"
+            type="password"
+            required
+            minlength="4"
+            autocomplete="new-password"
+            autofocus
+            {% if error %}aria-invalid="true" aria-describedby="auth-error"{% endif %}
+          />
+        </label>
+        <label for="token_confirm">Повтор
+          <input
+            id="token_confirm"
+            name="token_confirm"
+            type="password"
+            required
+            minlength="4"
+            autocomplete="new-password"
+            {% if error %}aria-invalid="true" aria-describedby="auth-error"{% endif %}
+          />
+        </label>
+        {% if error %}<p id="auth-error" class="field-error" role="alert">{{ error }}</p>{% endif %}
+        <button type="submit">Продолжить</button>
+        {% else %}
+        <h2>Вход</h2>
+        <p class="lede">Токен доступа к консоли.</p>
+
+        <label for="token">Токен
+          <input
+            id="token"
+            name="token"
+            type="password"
+            required
+            autocomplete="current-password"
+            autofocus
+            {% if error %}aria-invalid="true" aria-describedby="auth-error"{% endif %}
+          />
+        </label>
+        {% if error %}<p id="auth-error" class="field-error" role="alert">{{ error }}</p>{% endif %}
+        <button type="submit">Войти</button>
+        {% endif %}
+      </form>
+    </section>
+  </main>
+</body>
+</html>

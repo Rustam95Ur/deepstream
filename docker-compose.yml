@@ -1,0 +1,25 @@
+services:
+  nexus-deepstream:
+    build: .
+    image: nexus-deepstream:latest
+    container_name: nexus-deepstream
+    ports:
+      - "${NEXUS_DS_PORT:-8080}:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NEXUS_DS_HOST: "0.0.0.0"
+      NEXUS_DS_PORT: "8080"
+      NEXUS_DS_DATA_DIR: /data/nexus_deepstream
+      DEEPSTREAM_YOLO_DIR: /opt/nexus_deepstream/models/yolo11n
+      DEEPSTREAM_WORK_DIR: /tmp/nexus_deepstream
+      DEEPSTREAM_DEBUG_DIR: /data/nexus_deepstream/debug
+    volumes:
+      - nexus-ds-data:/data/nexus_deepstream
+      - ./models:/opt/nexus_deepstream/models
+    gpus: all
+    restart: unless-stopped
+
+volumes:
+  nexus-ds-data:
