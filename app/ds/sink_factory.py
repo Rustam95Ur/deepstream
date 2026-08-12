@@ -1,11 +1,11 @@
-"""Assemble sinks from NodeSettings."""
+"""Assemble HTTP + log sinks from NodeSettings."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from app.ds.sinks import CompositeSink, LogSink
-from app.ds.sinks.celery_sink import CelerySink
+from app.ds.sinks.async_sink import AsyncSink
 from app.ds.sinks.http_sink import HttpSink
 from app.settings import NodeSettings
 
@@ -15,7 +15,7 @@ def build_sink(
     *,
     source_video: str | None = None,
     max_triggers: int | None = None,
-) -> CompositeSink:
+) -> AsyncSink:
     sinks: list[Any] = []
     if settings.enable_log_sink:
         sinks.append(LogSink(source_video=source_video))
@@ -28,17 +28,9 @@ def build_sink(
                 source_video=source_video,
             )
         )
-    if settings.enable_celery_sink and settings.celery_broker_url.strip():
-        sinks.append(
-            CelerySink(
-                settings.celery_broker_url,
-                queue=settings.celery_queue,
-                task_name=settings.celery_task_name,
-                source_video=source_video,
-            )
-        )
     if not sinks:
         sinks.append(LogSink(source_video=source_video))
-    return CompositeSink(
+    composite = CompositeSink(
         sinks, source_video=source_video, max_triggers=max_triggers
     )
+    return AsyncSink(composite)

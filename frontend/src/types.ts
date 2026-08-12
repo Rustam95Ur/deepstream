@@ -1,6 +1,9 @@
 export interface Session {
   authenticated: boolean;
   setup: boolean;
+  user_id: string;
+  email: string;
+  name: string;
   node_id: string;
   node_name: string;
 }
@@ -13,10 +16,6 @@ export interface NodeSettings {
   cameras_poll_sec: number;
   triggers_url: string;
   triggers_timeout_sec: number;
-  celery_broker_url: string;
-  celery_queue: string;
-  celery_task_name: string;
-  enable_celery_sink: boolean;
   enable_http_sink: boolean;
   enable_log_sink: boolean;
   trigger_mode: string;
@@ -67,4 +66,35 @@ export interface WorkerStatus {
   last_started_at: string | null;
   last_error: string;
   camera_ids: string[];
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserList {
+  users: User[];
+}
+
+export interface SendEvent {
+  event_id: string;
+  sink: string;
+  url: string;
+  status: string;
+  http_status: number | null;
+  error: string;
+  created_at: string;
+}
+
+export interface TriggerEvent {
+  event_id: string;
+  camera_id: string;
+  trigger_type: string;
+  category: string;
+  evidence: Record<string, unknown>;
+  created_at: string;
 }

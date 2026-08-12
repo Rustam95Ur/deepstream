@@ -1,4 +1,4 @@
-"""Cookie session for the web UI (HMAC of the API token)."""
+"""Cookie session for the web UI (HMAC of user id + password hash)."""
 
 from __future__ import annotations
 
@@ -7,35 +7,48 @@ import secrets
 
 from fastapi import Request, Response
 
-from app.storage import get_store
+from app.users import UserRecord, get_user
 
 COOKIE_NAME = "nds_ui"
-_HMAC_KEY = b"nexus-deepstream-ui-v1"
+_HMAC_KEY = b"nexus-deepstream-ui-v2"
 _MAX_AGE = 60 * 60 * 24 * 7
 
 
-def _digest(token: str) -> str:
-    return hmac.new(_HMAC_KEY, token.encode("utf-8"), "sha256").hexdigest()
+def _digest(user_id: str, password_hash: str) -> str:
+    return hmac.new(
+        _HMAC_KEY,
+        f"{user_id}:{password_hash}".encode("utf-8"),
+        "sha256",
+    ).hexdigest()
 
 
-def tokens_match(a: str, b: str) -> bool:
+def secrets_match(a: str, b: str) -> bool:
     if not a or not b or len(a) != len(b):
         return False
     return secrets.compare_digest(a, b)
 
 
-def is_authed(request: Request) -> bool:
-    token = (get_store().get_settings().api_token or "").strip()
-    if not token:
-        return False
+def get_session_user(request: Request) -> UserRecord | None:
     cookie = request.cookies.get(COOKIE_NAME) or ""
-    return tokens_match(cookie, _digest(token))
+    user_id, sep, digest = cookie.partition(".")
+    if not sep or not user_id or not digest:
+        return None
+    user = get_user(user_id)
+    if not user:
+        return None
+    if not secrets_match(digest, _digest(user.id, user.password_hash)):
+        return None
+    return user
 
 
-def set_session_cookie(response: Response, token: str) -> None:
+def is_authed(request: Request) -> bool:
+    return get_session_user(request) is not None
+
+
+def set_session_cookie(response: Response, user: UserRecord) -> None:
     response.set_cookie(
         COOKIE_NAME,
-        _digest(token),
+        f"{user.id}.{_digest(user.id, user.password_hash)}",
         max_age=_MAX_AGE,
         httponly=True,
         samesite="lax",

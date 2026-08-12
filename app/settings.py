@@ -34,15 +34,8 @@ class NodeSettings(BaseModel):
         default="",
         description="POST trigger payload (Campus / webhook)",
     )
-    triggers_timeout_sec: float = Field(default=10.0, ge=1.0, le=120.0)
+    triggers_timeout_sec: float = Field(default=5.0, ge=1.0, le=120.0)
 
-    # Legacy Celery sink (optional)
-    celery_broker_url: str = Field(default="")
-    celery_queue: str = Field(default="celery")
-    celery_task_name: str = Field(
-        default="apps.school.tasks.process_deepstream_incident_trigger"
-    )
-    enable_celery_sink: bool = False
     enable_http_sink: bool = True
     enable_log_sink: bool = True
 

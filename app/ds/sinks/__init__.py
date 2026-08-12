@@ -1,4 +1,4 @@
-"""Trigger sinks: HTTP, Celery, log."""
+"""Trigger sinks: HTTP POST and log."""
 
 from __future__ import annotations
 

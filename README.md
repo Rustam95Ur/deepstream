@@ -7,7 +7,7 @@ One Django Campus can attach multiple nodes (different GPUs / machines).
 
 - Local camera registry (`GET/POST/DELETE /api/v1/cameras`) — Django imports like SmartBox
 - Settings UI at `/` (Vue SPA behind nginx in Docker)
-- Trigger sinks: HTTP POST (primary), optional Celery LPUSH (legacy)
+- Trigger sink: HTTP POST to `triggers_url`
 - Optional pull from `cameras_url` on an interval
 - Pipeline runs in a background thread when `pyservicemaker` is available
 
@@ -60,6 +60,24 @@ nginx (UI + `/api` proxy): http://127.0.0.1:8080
 
 Requires NVIDIA Container Toolkit (`gpus: all`). The DeepStream API container is internal; nginx is the public entry.
 
+Postgres stores cameras, users, integration URLs (`cameras_url` / `triggers_url`), trigger history, and outbound send history. Schema is applied with Alembic on API startup. `NEXUS_DS_DATABASE_URL` is required. There is no `cameras.json`.
+
+## Production stack
+
+Compose runs four services: **Postgres 16** (tuned WAL/buffers) → **PgBouncer** (transaction pool) → **API** (one uvicorn worker, GPU pipeline in-process) → **nginx** (SPA + keep-alive reverse proxy).
+
+The API talks to Postgres through PgBouncer (internal `:5432` on the `pgbouncer` service). Migrations use `NEXUS_DS_DATABASE_MIGRATE_URL` straight to the `postgres` service (DDL is not safe in transaction pooling).
+
+Keep **one** uvicorn worker. The DeepStream pipeline lives in that process; extra workers would start extra GPU pipelines.
+
+Hot path (probe thread) never waits on the network or the database:
+
+- Trigger HTTP goes to an in-memory queue and 4 worker threads (`NEXUS_DS_SINK_WORKERS`). HTTP uses keep-alive. If the queue is full, the event is dropped and logged.
+- History inserts are batched (`NEXUS_DS_HISTORY_BATCH` / `NEXUS_DS_HISTORY_FLUSH_MS`) on a background writer. Reads do not commit.
+- Camera list is cached (`NEXUS_DS_CAMERA_CACHE_MS`) and invalidated on write.
+
+See `.env.example` for pool, queue, and cache knobs.
+
 ## API (for Django)
 
 | Method | Path | Purpose |
@@ -71,10 +89,15 @@ Requires NVIDIA Container Toolkit (`gpus: all`). The DeepStream API container is
 | GET/PUT | `/api/v1/settings` | node settings |
 | POST | `/api/v1/cameras-pull` | pull from `cameras_url` |
 | GET | `/api/v1/auth/session` | UI session status |
-| POST | `/api/v1/auth/login` | UI session cookie |
+| POST | `/api/v1/auth/login` | UI session cookie (`email` + `password`; first user also sends `password_confirm`) |
 | POST | `/api/v1/auth/logout` | clear UI cookie |
+| GET | `/api/v1/users` | list console users |
+| POST | `/api/v1/users` | create user `{email, password, name}` |
+| DELETE | `/api/v1/users/{id}` | remove user |
+| GET | `/api/v1/history/triggers` | trigger history |
+| GET | `/api/v1/history/sends` | HTTP send history |
 
-If `api_token` is set in settings, send `Authorization: Bearer <token>` (the Vue UI uses a cookie instead).
+If `api_token` is set in settings, send `Authorization: Bearer <token>` for machine access. The Vue UI logs in with email/password and uses an httpOnly cookie. The first visit with an empty `users` table creates the initial operator.
 
 ### Trigger payload (POST to `triggers_url`)
 

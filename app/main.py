@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.api.auth import router as auth_router
 from app.api.cameras import router as cameras_router
+from app.api.history import router as history_router
 from app.api.node import router as node_router
+from app.api.users import router as users_router
+from app.db import init_db
+from app.history import get_history_writer
 from app.storage import get_store
 from app.web import SPA_DIR, router as web_router
 from app.worker import get_manager
@@ -27,6 +30,8 @@ logger = logging.getLogger("nexus_deepstream")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    init_db()
+    get_history_writer().start()
     store = get_store()
     settings = store.get_settings()
     logger.info(
@@ -41,6 +46,7 @@ async def lifespan(_app: FastAPI):
     yield
     get_poller().stop()
     get_manager().stop()
+    get_history_writer().stop()
 
 
 app = FastAPI(
@@ -50,10 +56,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-static_dir = Path(__file__).resolve().parent / "web" / "static"
-static_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
 spa_assets = SPA_DIR / "assets"
 if spa_assets.is_dir():
     app.mount("/assets", StaticFiles(directory=str(spa_assets)), name="spa-assets")
@@ -61,6 +63,8 @@ if spa_assets.is_dir():
 app.include_router(auth_router)
 app.include_router(node_router)
 app.include_router(cameras_router)
+app.include_router(users_router)
+app.include_router(history_router)
 app.include_router(web_router)
 
 

@@ -25,6 +25,8 @@ RUN (python3 -m pip install --quiet --disable-pip-version-check --break-system-p
     && poetry install --only main --no-root --no-ansi
 
 COPY app /opt/nexus_deepstream/app
+COPY alembic.ini /opt/nexus_deepstream/alembic.ini
+COPY alembic /opt/nexus_deepstream/alembic
 COPY shell/boot.sh /opt/nexus_deepstream/shell/boot.sh
 # Optional: bake models (or mount at runtime)
 COPY models /opt/nexus_deepstream/models

@@ -1,47 +1,28 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import Field from "../components/Field.vue";
+import { ref } from "vue";
+import { useRouter } from "vue-router";
 import SwitchField from "../components/SwitchField.vue";
 import { ApiError, api } from "../api";
 import { flash, refreshCameras, store } from "../store";
 import type { Camera } from "../types";
 
-const camId = ref("");
-const camName = ref("");
-const camUri = ref("");
-const camEnabled = ref(true);
+const router = useRouter();
 const pendingDelete = ref<Camera | null>(null);
+const toggling = ref("");
 
-const filtered = computed(() => {
-  const q = store.search.trim().toLowerCase();
-  if (!q) return store.cameras;
-  return store.cameras.filter(
-    (c) =>
-      c.id.toLowerCase().includes(q) ||
-      c.name.toLowerCase().includes(q) ||
-      c.main_uri.toLowerCase().includes(q),
-  );
-});
-
-async function addCamera() {
-  const uri = camUri.value.trim();
-  if (!uri) return;
+async function toggleEnabled(cam: Camera, enabled: boolean) {
+  if (toggling.value) return;
+  toggling.value = cam.id;
+  const prev = cam.enabled;
+  cam.enabled = enabled;
   try {
-    const id = camId.value.trim() || `cam_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
-    await api.upsertCamera({
-      id,
-      name: camName.value.trim() || id,
-      main_uri: uri,
-      enabled: camEnabled.value,
-    });
-    camId.value = "";
-    camName.value = "";
-    camUri.value = "";
-    camEnabled.value = true;
+    await api.updateCamera(cam.id, { ...cam, enabled });
     await refreshCameras();
-    flash("Камера сохранена");
   } catch (err) {
-    store.error = err instanceof ApiError ? err.message : "Не удалось сохранить камеру";
+    cam.enabled = prev;
+    store.error = err instanceof ApiError ? err.message : "Не удалось сменить статус";
+  } finally {
+    toggling.value = "";
   }
 }
 
@@ -63,43 +44,51 @@ async function confirmDelete() {
   <div class="stack-lg">
     <section class="card">
       <div class="card-head">
-        <h2>Добавить камеру</h2>
-        <p class="lede">Пустой id выдаётся автоматически.</p>
-      </div>
-      <form class="card-body form-grid" @submit.prevent="addCamera">
-        <Field id="cam-id" v-model="camId" label="id" addon="ID" />
-        <Field id="cam-name" v-model="camName" label="name" addon="Name" />
-        <Field id="cam-uri" v-model="camUri" class="span-2" label="RTSP / URI" addon="rtsp://" required />
-        <div class="span-2">
-          <SwitchField id="cam-enabled" v-model="camEnabled" label="enabled" />
-        </div>
-        <div class="form-actions span-2">
-          <button type="submit">Добавить</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2>Реестр ({{ filtered.length }})</h2>
-        <p class="lede">Удаление снимает поток с ноды.</p>
+        <h2>Реестр ({{ store.cameras.length }})</h2>
+        <p class="lede">Статус применяется сразу. Изменение и удаление влияют на поток.</p>
       </div>
       <div class="card-body">
-        <div v-if="filtered.length" class="table-wrap">
+        <div v-if="store.cameras.length" class="table-wrap">
           <table>
             <thead>
-              <tr><th>id</th><th>name</th><th>uri</th><th></th></tr>
+              <tr>
+                <th>Статус</th>
+                <th>ID</th>
+                <th>Имя</th>
+                <th>Адрес</th>
+                <th></th>
+              </tr>
             </thead>
             <tbody>
-              <tr v-for="c in filtered" :key="c.id">
-                <td>
-                  <code>{{ c.id }}</code>
-                  <span v-if="!c.enabled" class="pill">off</span>
+              <tr v-for="c in store.cameras" :key="c.id">
+                <td class="td-status">
+                  <SwitchField
+                    :id="`cam-on-${c.id}`"
+                    :model-value="c.enabled"
+                    label="Включена"
+                    compact
+                    :disabled="toggling === c.id"
+                    @update:model-value="(v) => toggleEnabled(c, v)"
+                  />
                 </td>
+                <td><code>{{ c.id }}</code></td>
                 <td>{{ c.name }}</td>
                 <td class="uri">{{ c.main_uri }}</td>
                 <td class="td-action">
-                  <button type="button" class="ghost danger" :aria-label="`Удалить камеру ${c.id}`" @click="pendingDelete = c">Удалить</button>
+                  <div class="row">
+                    <button
+                      type="button"
+                      class="ghost"
+                      :aria-label="`Изменить камеру ${c.id}`"
+                      @click="router.push({ name: 'camera-edit', params: { id: c.id } })"
+                    >Изменить</button>
+                    <button
+                      type="button"
+                      class="ghost danger"
+                      :aria-label="`Удалить камеру ${c.id}`"
+                      @click="pendingDelete = c"
+                    >Удалить</button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -107,7 +96,7 @@ async function confirmDelete() {
         </div>
         <div v-else class="empty">
           <p class="empty-title">Камер пока нет</p>
-          <p class="lede">Добавьте поток в форме выше или через API.</p>
+          <p class="lede">Добавьте поток кнопкой выше или через API.</p>
         </div>
       </div>
     </section>

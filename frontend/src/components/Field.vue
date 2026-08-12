@@ -10,6 +10,9 @@ const props = withDefaults(
     autocomplete?: string;
     addon?: string;
     invalid?: boolean;
+    readonly?: boolean;
+    minlength?: number;
+    maxlength?: number;
   }>(),
   { type: "text" },
 );
@@ -19,6 +22,7 @@ const emit = defineEmits<{
 }>();
 
 function onInput(event: Event) {
+  if (props.readonly) return;
   const el = event.target as HTMLInputElement;
   if (props.type === "number") {
     emit("update:modelValue", el.value === "" ? 0 : Number(el.value));
@@ -42,6 +46,9 @@ function onInput(event: Event) {
         :autocomplete="autocomplete"
         :aria-invalid="invalid ? true : undefined"
         :placeholder="label"
+        :readonly="readonly"
+        :minlength="minlength"
+        :maxlength="maxlength"
         @input="onInput"
       />
     </div>

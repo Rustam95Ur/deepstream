@@ -1,4 +1,4 @@
-import type { Camera, CameraList, NodeSettings, Session, WorkerStatus } from "./types";
+import type { Camera, CameraList, NodeSettings, SendEvent, Session, TriggerEvent, User, UserList, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -34,10 +34,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   session: () => request<Session>("/api/v1/auth/session"),
-  login: (token: string, token_confirm = "") =>
+  login: (email: string, password: string, password_confirm = "") =>
     request<Session>("/api/v1/auth/login", {
       method: "POST",
-      body: JSON.stringify({ token, token_confirm }),
+      body: JSON.stringify({ email, password, password_confirm }),
     }),
   logout: () => request<Session>("/api/v1/auth/logout", { method: "POST" }),
   settings: () => request<NodeSettings>("/api/v1/settings"),
@@ -52,9 +52,37 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  updateCamera: (id: string, body: Camera) =>
+    request<Camera>(`/api/v1/cameras/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        id: body.id,
+        name: body.name,
+        main_uri: body.main_uri,
+        enabled: body.enabled,
+        external_id: body.external_id,
+        meta: body.meta,
+      }),
+    }),
   deleteCamera: (id: string) =>
     request<void>(`/api/v1/cameras/${encodeURIComponent(id)}`, { method: "DELETE" }),
   worker: () => request<WorkerStatus>("/api/v1/worker"),
   workerStart: () => request<WorkerStatus>("/api/v1/worker/start", { method: "POST" }),
   workerStop: () => request<WorkerStatus>("/api/v1/worker/stop", { method: "POST" }),
+  historyTriggers: () => request<TriggerEvent[]>("/api/v1/history/triggers"),
+  historySends: () => request<SendEvent[]>("/api/v1/history/sends"),
+  users: () => request<UserList>("/api/v1/users"),
+  getUser: (id: string) => request<User>(`/api/v1/users/${encodeURIComponent(id)}`),
+  createUser: (body: { email: string; password: string; name: string }) =>
+    request<User>("/api/v1/users", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateUser: (id: string, body: { email: string; name: string; password: string }) =>
+    request<User>(`/api/v1/users/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteUser: (id: string) =>
+    request<void>(`/api/v1/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };

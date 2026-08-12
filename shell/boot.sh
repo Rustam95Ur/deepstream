@@ -42,4 +42,13 @@ for eng in /opt/nvidia/deepstream/deepstream-9.0/model_b*_gpu0_fp16.engine; do
 done
 
 cd /opt/nexus_deepstream
-exec "${PY}" -m uvicorn app.main:app --host "${NEXUS_DS_HOST}" --port "${NEXUS_DS_PORT}"
+exec "${PY}" -m uvicorn app.main:app \
+  --host "${NEXUS_DS_HOST}" \
+  --port "${NEXUS_DS_PORT}" \
+  --workers 1 \
+  --timeout-keep-alive 30 \
+  --backlog 2048 \
+  --limit-concurrency 200 \
+  --proxy-headers \
+  --forwarded-allow-ips='*' \
+  --no-access-log

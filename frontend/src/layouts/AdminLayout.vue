@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ApiError, api } from "../api";
 import Logo from "../components/Logo.vue";
-import { enabledCount, loadConsole, startWorker, stopWorker, store } from "../store";
+import { loadConsole, startWorker, stopWorker, store } from "../store";
 
 const route = useRoute();
 const router = useRouter();
@@ -13,20 +13,27 @@ const userOpen = ref(false);
 const titles: Record<string, { title: string; desc: string }> = {
   overview: { title: "Обзор", desc: "Статус pipeline и ноды" },
   cameras: { title: "Камеры", desc: "Потоки на этой ноде" },
-  node: { title: "Нода", desc: "Идентификация и лимиты" },
-  ingest: { title: "Связь", desc: "Campus, HTTP и Celery" },
+  "camera-new": { title: "Новая камера", desc: "Добавление потока" },
+  "camera-edit": { title: "Изменить камеру", desc: "Параметры потока" },
+  settings: { title: "Настройки", desc: "Идентификация и лимиты" },
+  ingest: { title: "Связь", desc: "HTTP-отправка событий" },
   triggers: { title: "Триггеры", desc: "Пороги детекции" },
+  history: { title: "История", desc: "Сработки и отправки" },
+  users: { title: "Пользователи", desc: "Доступ в консоль по email" },
+  "user-new": { title: "Новый пользователь", desc: "Email и пароль для входа" },
+  "user-edit": { title: "Изменить пользователя", desc: "Email, имя и пароль" },
 };
 
 const page = computed(() => titles[String(route.name)] || titles.overview);
-const pipelinePct = computed(() => (store.worker?.running ? 100 : 0));
 
 const nav = [
   { name: "overview", label: "Обзор", icon: "home" },
   { name: "cameras", label: "Камеры", icon: "cam" },
-  { name: "node", label: "Нода", icon: "node" },
+  { name: "settings", label: "Настройки", icon: "node" },
   { name: "ingest", label: "Связь", icon: "link" },
   { name: "triggers", label: "Триггеры", icon: "bolt" },
+  { name: "history", label: "История", icon: "history" },
+  { name: "users", label: "Пользователи", icon: "user" },
 ] as const;
 
 onMounted(async () => {
@@ -56,6 +63,17 @@ async function logout() {
 function go(name: string) {
   mobileOpen.value = false;
   router.push({ name });
+}
+
+function isNavActive(name: string) {
+  const current = String(route.name || "");
+  if (name === "cameras") {
+    return current === "cameras" || current === "camera-new" || current === "camera-edit";
+  }
+  if (name === "users") {
+    return current === "users" || current === "user-new" || current === "user-edit";
+  }
+  return current === name;
 }
 
 async function onStart() {
@@ -91,20 +109,13 @@ async function onStop() {
           </button>
         </div>
         <div class="app-navbar">
-          <label class="header-search">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.7"/>
-              <path d="M16 16.5 20 20.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
-            </svg>
-            <input v-model="store.search" type="search" placeholder="Поиск" />
-          </label>
           <div class="user-wrap" @click.stop>
             <button type="button" class="user-btn" @click="userOpen = !userOpen">
               <span class="user-meta">
-                <strong>{{ store.settings?.node_name || "Node" }}</strong>
+                <strong>{{ store.session?.email || store.settings?.node_name || "Оператор" }}</strong>
                 <small>{{ store.settings?.node_id }}</small>
               </span>
-              <span class="avatar">{{ (store.settings?.node_name || "N").slice(0, 1) }}</span>
+              <span class="avatar">{{ (store.session?.email || store.settings?.node_name || "N").slice(0, 1).toUpperCase() }}</span>
             </button>
             <div v-if="userOpen" class="dropdown">
               <button type="button" class="dropdown-item" @click="logout">Выйти</button>
@@ -115,30 +126,6 @@ async function onStop() {
     </header>
 
     <aside class="app-sidebar" aria-label="Сервисы">
-      <div class="sidebar-progress">
-        <div class="sidebar-progress-head">
-          <span>Pipeline</span>
-          <span class="text-primary">{{ store.worker?.running ? "running" : "idle" }}</span>
-        </div>
-        <div class="progress-track">
-          <div class="progress-fill" :style="{ width: pipelinePct + '%' }"></div>
-        </div>
-        <p class="sidebar-progress-note">
-          {{ store.worker?.detail || "нет статуса" }}
-        </p>
-      </div>
-
-      <div class="sidebar-stats">
-        <div class="dash-stat">
-          <span>Камеры</span>
-          <strong>{{ enabledCount }}</strong>
-        </div>
-        <div class="dash-stat">
-          <span>Лимит</span>
-          <strong>{{ store.settings?.max_streams ?? "—" }}</strong>
-        </div>
-      </div>
-
       <h3 class="sidebar-title">Сервисы</h3>
       <nav class="service-grid">
         <button
@@ -146,7 +133,7 @@ async function onStop() {
           :key="item.name"
           type="button"
           class="service-tile"
-          :class="{ active: route.name === item.name }"
+          :class="{ active: isNavActive(item.name) }"
           @click="go(item.name)"
         >
           <span class="tile-icon" aria-hidden="true">
@@ -165,6 +152,14 @@ async function onStop() {
               <path d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 5.93" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               <path d="M14 11a5 5 0 0 0-7.07 0L5.52 12.4a5 5 0 0 0 7.07 7.07L14 18.07" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
             </svg>
+            <svg v-else-if="item.icon === 'user'" width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M5.5 19c.8-3.2 3.3-5 6.5-5s5.7 1.8 6.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <svg v-else-if="item.icon === 'history'" width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M12 8v4.5l3 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
             <svg v-else width="26" height="26" viewBox="0 0 24 24" fill="none">
               <path d="M13 3 5 14h7l-1 7 8-11h-7l1-7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
             </svg>
@@ -178,16 +173,33 @@ async function onStop() {
       <div class="app-toolbar">
         <div class="page-title">
           <h1>
-            <span class="fw-light">{{ route.name === 'overview' ? 'Welcome back,' : '' }}</span>
-            {{ route.name === 'overview' ? (store.settings?.node_name || 'Node') : page.title }}
+            <span class="fw-light">{{ route.name === 'overview' ? 'С возвращением,' : '' }}</span>
+            {{ route.name === 'overview' ? (store.session?.email || store.settings?.node_name || 'оператор') : page.title }}
           </h1>
           <p class="page-desc">
             {{ route.name === 'overview' ? 'Вы вошли как оператор этой ноды' : page.desc }}
           </p>
         </div>
         <div v-if="route.name === 'overview'" class="toolbar-actions">
-          <button type="button" class="btn-success" @click="onStart">Start</button>
-          <button type="button" class="btn-dark" @click="onStop">Stop</button>
+          <button
+            type="button"
+            class="btn-success"
+            :disabled="store.workerBusy || !!store.worker?.running"
+            @click="onStart"
+          >
+            {{ store.workerBusy && !store.worker?.running ? "Запуск…" : "Запустить" }}
+          </button>
+          <button
+            type="button"
+            class="btn-dark"
+            :disabled="store.workerBusy || !store.worker?.running"
+            @click="onStop"
+          >
+            {{ store.workerBusy && store.worker?.running ? "Остановка…" : "Остановить" }}
+          </button>
+        </div>
+        <div v-else-if="route.name === 'cameras'" class="toolbar-actions">
+          <button type="button" @click="go('camera-new')">Добавить</button>
         </div>
       </div>
 

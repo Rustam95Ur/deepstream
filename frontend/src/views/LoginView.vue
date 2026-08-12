@@ -8,8 +8,9 @@ import type { Session } from "../types";
 
 const router = useRouter();
 const session = ref<Session | null>(null);
-const token = ref("");
-const tokenConfirm = ref("");
+const email = ref("");
+const password = ref("");
+const passwordConfirm = ref("");
 const error = ref("");
 const pending = ref(false);
 
@@ -21,7 +22,7 @@ async function onSubmit() {
   error.value = "";
   pending.value = true;
   try {
-    await api.login(token.value, tokenConfirm.value);
+    await api.login(email.value, password.value, passwordConfirm.value);
     await router.push({ name: "overview" });
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : "Не удалось войти";
@@ -37,31 +38,44 @@ async function onSubmit() {
       <div class="auth-card">
         <template v-if="session">
           <h1>{{ session.setup ? "Доступ" : "Вход" }}</h1>
-          <p class="lede">{{ session.setup ? "Задайте токен для этой ноды." : "Токен доступа к консоли." }}</p>
+          <p class="lede">
+            {{ session.setup ? "Создайте первого пользователя по email." : "Вход в консоль по email." }}
+          </p>
           <p class="muted auth-node">{{ session.node_name }} · {{ session.node_id }}</p>
           <form class="auth-form" autocomplete="on" @submit.prevent="onSubmit">
             <Field
-              id="token"
-              v-model="token"
-              label="Токен"
+              id="email"
+              v-model="email"
+              label="Email"
+              type="email"
+              autocomplete="username"
+              required
+              :invalid="!!error"
+            />
+            <Field
+              id="password"
+              v-model="password"
+              label="Пароль"
               type="password"
               :autocomplete="session.setup ? 'new-password' : 'current-password'"
+              :minlength="session.setup ? 8 : undefined"
               required
               :invalid="!!error"
             />
             <Field
               v-if="session.setup"
-              id="token_confirm"
-              v-model="tokenConfirm"
-              label="Повтор"
+              id="password_confirm"
+              v-model="passwordConfirm"
+              label="Повтор пароля"
               type="password"
               autocomplete="new-password"
+              :minlength="8"
               required
               :invalid="!!error"
             />
             <p v-if="error" class="field-error" role="alert">{{ error }}</p>
             <button type="submit" :disabled="pending">
-              {{ session.setup ? "Продолжить" : "Войти" }}
+              {{ session.setup ? "Создать и войти" : "Войти" }}
             </button>
           </form>
         </template>

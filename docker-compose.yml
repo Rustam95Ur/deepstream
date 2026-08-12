@@ -1,4 +1,73 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus-deepstream-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nexus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus}
+      POSTGRES_DB: ${POSTGRES_DB:-nexus_deepstream}
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - wal_buffers=16MB
+      - -c
+      - wal_compression=on
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - min_wal_size=256MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - idle_in_transaction_session_timeout=10000
+    volumes:
+      - nexus-ds-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: nexus-deepstream-pgbouncer
+    environment:
+      DB_USER: ${POSTGRES_USER:-nexus}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-nexus}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-nexus_deepstream}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "20"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      AUTH_TYPE: scram-sha-256
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+      TRACK_EXTRA_PARAMETERS: statement_timeout,idle_in_transaction_session_timeout,TimeZone
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   nexus-deepstream:
     build:
       context: .
@@ -14,6 +83,15 @@ services:
       NEXUS_DS_HOST: "0.0.0.0"
       NEXUS_DS_PORT: "8080"
       NEXUS_DS_DATA_DIR: /data/nexus_deepstream
+      NEXUS_DS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus}@pgbouncer:5432/${POSTGRES_DB:-nexus_deepstream}
+      NEXUS_DS_DATABASE_MIGRATE_URL: postgresql+psycopg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus}@postgres:5432/${POSTGRES_DB:-nexus_deepstream}
+      NEXUS_DS_DB_POOL_SIZE: "20"
+      NEXUS_DS_DB_MAX_OVERFLOW: "20"
+      NEXUS_DS_HISTORY_QUEUE: "20000"
+      NEXUS_DS_HISTORY_BATCH: "200"
+      NEXUS_DS_HISTORY_FLUSH_MS: "200"
+      NEXUS_DS_SINK_WORKERS: "4"
+      NEXUS_DS_SINK_QUEUE: "10000"
       DEEPSTREAM_YOLO_DIR: /opt/nexus_deepstream/models/yolo11n
       DEEPSTREAM_WORK_DIR: /tmp/nexus_deepstream
       DEEPSTREAM_DEBUG_DIR: /data/nexus_deepstream/debug
@@ -21,6 +99,11 @@ services:
       - nexus-ds-data:/data/nexus_deepstream
       - ./models:/opt/nexus_deepstream/models
     gpus: all
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
     restart: unless-stopped
 
   nginx:
@@ -37,3 +120,4 @@ services:
 
 volumes:
   nexus-ds-data:
+  nexus-ds-pg:

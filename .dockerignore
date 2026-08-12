@@ -16,4 +16,3 @@ data/
 docker-compose*.yml
 frontend/node_modules
 frontend/dist
-frontend/demo17

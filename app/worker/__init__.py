@@ -33,30 +33,49 @@ class PipelineManager:
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._running = False
+        self._active = False
         self._last_started_at: datetime | None = None
         self._last_error = ""
         self._camera_ids: list[str] = []
         self._reload_requested = threading.Event()
 
     def status(self) -> WorkerStatusOut:
-        ok, detail = pipeline_available()
+        ok, avail_detail = pipeline_available()
+        alive = bool(self._thread and self._thread.is_alive())
+        running = self._active and alive
         return WorkerStatusOut(
-            running=self._running,
+            running=running,
             available=ok,
-            detail=detail,
+            detail=self._status_detail(ok, avail_detail, running),
             last_started_at=self._last_started_at,
             last_error=self._last_error,
             camera_ids=list(self._camera_ids),
         )
+
+    def _status_detail(self, ok: bool, avail_detail: str, running: bool) -> str:
+        if not running:
+            return "остановлен" if ok else avail_detail
+        if not ok:
+            return avail_detail
+        if self._running:
+            n = len(self._camera_ids)
+            return f"активен · {n} кам." if n else "активен"
+        if self._last_error:
+            if self._last_error == "no enabled cameras":
+                return "нет включённых камер"
+            return self._last_error
+        return "запускается…"
 
     def request_reload(self) -> None:
         self._reload_requested.set()
 
     def start(self) -> WorkerStatusOut:
         with self._lock:
+            self._active = True
             if self._thread and self._thread.is_alive():
                 return self.status()
             self._stop.clear()
+            self._last_error = ""
             self._thread = threading.Thread(
                 target=self._loop, name="ds-pipeline", daemon=True
             )
@@ -64,6 +83,7 @@ class PipelineManager:
         return self.status()
 
     def stop(self) -> WorkerStatusOut:
+        self._active = False
         self._stop.set()
         self._reload_requested.set()
         t = self._thread
@@ -135,6 +155,9 @@ class PipelineManager:
                 logger.exception("Pipeline crashed")
                 self._wait_or_reload(max(1.0, settings.reconnect_s))
             finally:
+                closer = getattr(sink, "close", None)
+                if callable(closer):
+                    closer()
                 self._running = False
 
     def _wait_or_reload(self, seconds: float) -> None:

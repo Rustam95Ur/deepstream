@@ -15,15 +15,25 @@ import { enabledCount, store } from "../store";
               <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </span>
-          <p class="stat-v" :class="store.worker.running ? 'ok' : ''">
-            {{ store.worker.running ? "running" : "idle" }}
+          <p class="stat-v" :class="store.worker.running ? 'ok' : 'muted'">
+            {{ store.worker.running ? "работает" : "остановлен" }}
           </p>
-          <span class="badge" :class="store.worker.running ? 'badge-ok' : 'badge-primary'">
-            {{ store.worker.available ? "ready" : "offline" }}
+          <span
+            class="badge"
+            :class="store.worker.running ? (store.worker.available ? 'badge-ok' : 'badge-warn') : 'badge-muted'"
+          >
+            {{
+              store.worker.running
+                ? (store.worker.available ? "онлайн" : "нет GPU")
+                : "стоп"
+            }}
           </span>
         </div>
         <div class="card-foot">
           <span>{{ store.worker.detail || "Нет статуса" }}</span>
+          <span v-if="store.worker.last_error && store.worker.last_error !== store.worker.detail" class="muted">
+            {{ store.worker.last_error }}
+          </span>
         </div>
       </article>
 
@@ -39,7 +49,7 @@ import { enabledCount, store } from "../store";
             </svg>
           </span>
           <p class="stat-v">{{ enabledCount }}</p>
-          <span class="badge badge-primary">{{ store.cameras.length }} total</span>
+          <span class="badge badge-primary">{{ store.cameras.length }} всего</span>
         </div>
         <div class="card-foot">
           <span>включено на этой ноде</span>
@@ -57,7 +67,7 @@ import { enabledCount, store } from "../store";
               <path d="M12 8v4l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
             </svg>
           </span>
-          <p class="stat-v">{{ store.settings.auto_start_pipeline ? "on" : "off" }}</p>
+          <p class="stat-v">{{ store.settings.auto_start_pipeline ? "вкл" : "выкл" }}</p>
         </div>
         <div class="card-foot">
           <span>при старте процесса</span>
