@@ -83,7 +83,7 @@ See `.env.example` for pool, queue, and cache knobs.
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/v1/health` | node status |
-| GET | `/api/v1/cameras` | list cameras (`node_id` + items) |
+| GET | `/api/v1/cameras` | list cameras (`q`, `enabled`, `since`, `until`, `cursor`, `limit`; omit `limit` for the full list) |
 | POST | `/api/v1/cameras` | upsert camera `{id, name, main_uri, enabled}` |
 | DELETE | `/api/v1/cameras/{id}` | remove |
 | GET/PUT | `/api/v1/settings` | node settings |
@@ -91,11 +91,11 @@ See `.env.example` for pool, queue, and cache knobs.
 | GET | `/api/v1/auth/session` | UI session status |
 | POST | `/api/v1/auth/login` | UI session cookie (`email` + `password`; first user also sends `password_confirm`) |
 | POST | `/api/v1/auth/logout` | clear UI cookie |
-| GET | `/api/v1/users` | list console users |
+| GET | `/api/v1/users` | list console users (`q`, `since`, `until`, `cursor`, `limit`) |
 | POST | `/api/v1/users` | create user `{email, password, name}` |
 | DELETE | `/api/v1/users/{id}` | remove user |
-| GET | `/api/v1/history/triggers` | trigger history |
-| GET | `/api/v1/history/sends` | HTTP send history |
+| GET | `/api/v1/history/triggers` | trigger history page `{items, next_cursor}` (`since`, `until`, `camera_id`, `trigger_type`, `category`, `event_id`, `cursor`, `limit`) |
+| GET | `/api/v1/history/sends` | HTTP send history page `{items, next_cursor}` (`since`, `until`, `status`, `event_id`, `sink`, `cursor`, `limit`) |
 
 If `api_token` is set in settings, send `Authorization: Bearer <token>` for machine access. The Vue UI logs in with email/password and uses an httpOnly cookie. The first visit with an empty `users` table creates the initial operator.
 

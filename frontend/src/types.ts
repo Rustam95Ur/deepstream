@@ -57,6 +57,24 @@ export interface CameraList {
   node_id: string;
   cameras: Camera[];
   updated_at: string | null;
+  next_cursor?: string | null;
+}
+
+export interface CameraQuery {
+  q?: string;
+  enabled?: boolean;
+  since?: string;
+  until?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface UserQuery {
+  q?: string;
+  since?: string;
+  until?: string;
+  cursor?: string;
+  limit?: number;
 }
 
 export interface WorkerStatus {
@@ -78,6 +96,13 @@ export interface User {
 
 export interface UserList {
   users: User[];
+  next_cursor?: string | null;
+  total?: number;
+}
+
+export interface HistoryPage<T> {
+  items: T[];
+  next_cursor?: string | null;
 }
 
 export interface SendEvent {
@@ -88,6 +113,19 @@ export interface SendEvent {
   http_status: number | null;
   error: string;
   created_at: string;
+}
+
+export interface HistoryQuery {
+  since?: string;
+  until?: string;
+  camera_id?: string;
+  trigger_type?: string;
+  category?: string;
+  event_id?: string;
+  status?: string;
+  sink?: string;
+  limit?: number;
+  cursor?: string;
 }
 
 export interface TriggerEvent {

@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.db import session_scope
 from app.models import CameraRow, LinkRow
+from app.paging import encode_cursor
 from app.schemas import CameraIn, CameraOut
 from app.settings import EnvBootstrap, NodeSettings, load_env_bootstrap
 
@@ -134,6 +135,47 @@ class Store:
             self._cameras = out
             self._cameras_at = time.monotonic()
             return list(out)
+
+    def search_cameras(
+        self,
+        *,
+        q: str = "",
+        enabled: bool | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        after_id: str | None = None,
+        limit: int | None = None,
+    ) -> tuple[list[CameraOut], str | None]:
+        stmt = select(CameraRow)
+        needle = (q or "").strip()
+        if needle:
+            like = f"%{needle}%"
+            stmt = stmt.where(
+                or_(
+                    CameraRow.id.ilike(like),
+                    CameraRow.name.ilike(like),
+                    CameraRow.main_uri.ilike(like),
+                )
+            )
+        if enabled is not None:
+            stmt = stmt.where(CameraRow.enabled.is_(enabled))
+        if since is not None:
+            stmt = stmt.where(CameraRow.created_at >= since)
+        if until is not None:
+            stmt = stmt.where(CameraRow.created_at <= until)
+        if after_id:
+            stmt = stmt.where(CameraRow.id > after_id)
+        stmt = stmt.order_by(CameraRow.id)
+        if limit is not None:
+            stmt = stmt.limit(limit + 1)
+        with session_scope(write=False) as session:
+            rows = list(session.scalars(stmt).all())
+        extra = limit is not None and len(rows) > limit
+        if extra:
+            rows = rows[:limit]
+        out = [_camera_out(r) for r in rows]
+        next_cursor = encode_cursor(id=rows[-1].id) if extra and rows else None
+        return out, next_cursor
 
     def get_camera(self, camera_id: str) -> CameraOut | None:
         with session_scope(write=False) as session:

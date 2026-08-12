@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, status
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.api import ApiAuth
+from app.paging import cursor_or_400, cursor_str
 from app.schemas import UserIn, UserListOut, UserOut, UserUpdateIn
 from app.users import (
     EmailTakenError,
@@ -20,6 +23,14 @@ from app.users import (
 router = APIRouter(prefix="/api/v1/users", tags=["users"], dependencies=[ApiAuth])
 
 
+def _aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _out(user: UserRecord) -> UserOut:
     return UserOut(
         id=user.id,
@@ -31,8 +42,29 @@ def _out(user: UserRecord) -> UserOut:
 
 
 @router.get("", response_model=UserListOut)
-def get_users() -> UserListOut:
-    return UserListOut(users=[_out(u) for u in list_users()])
+def get_users(
+    q: str = Query(default=""),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    cursor: str = Query(default=""),
+    limit: int | None = Query(default=None, ge=1, le=200),
+) -> UserListOut:
+    payload = cursor_or_400(cursor)
+    after_email = after_id = None
+    if payload is not None:
+        after_email = cursor_str(payload, "k")
+        after_id = cursor_str(payload, "id")
+    paginated = limit is not None or payload is not None
+    page_size = (limit or 25) if paginated else None
+    users, next_cursor = list_users(
+        q=q,
+        since=_aware(since),
+        until=_aware(until),
+        after_email=after_email,
+        after_id=after_id,
+        limit=page_size,
+    )
+    return UserListOut(users=[_out(u) for u in users], next_cursor=next_cursor, total=user_count())
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)

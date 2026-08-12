@@ -6,11 +6,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 
 from app.db import session_scope
 from app.models import UserRow
+from app.paging import encode_cursor
 from app.web.passwords import hash_password
 
 
@@ -71,10 +72,36 @@ def get_user_by_email(email: str) -> UserRecord | None:
         return _record(row) if row else None
 
 
-def list_users() -> list[UserRecord]:
+def list_users(
+    *,
+    q: str = "",
+    since: datetime | None = None,
+    until: datetime | None = None,
+    after_email: str | None = None,
+    after_id: str | None = None,
+    limit: int | None = None,
+) -> tuple[list[UserRecord], str | None]:
+    stmt = select(UserRow)
+    needle = (q or "").strip()
+    if needle:
+        like = f"%{needle}%"
+        stmt = stmt.where(or_(UserRow.email.ilike(like), UserRow.name.ilike(like)))
+    if since is not None:
+        stmt = stmt.where(UserRow.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(UserRow.created_at <= until)
+    if after_email and after_id:
+        stmt = stmt.where(tuple_(UserRow.email, UserRow.id) > (after_email, after_id))
+    stmt = stmt.order_by(UserRow.email, UserRow.id)
+    if limit is not None:
+        stmt = stmt.limit(limit + 1)
     with session_scope(write=False) as session:
-        rows = session.scalars(select(UserRow).order_by(UserRow.email)).all()
-        return [_record(r) for r in rows]
+        rows = list(session.scalars(stmt).all())
+    extra = limit is not None and len(rows) > limit
+    if extra:
+        rows = rows[:limit]
+    next_cursor = encode_cursor(k=rows[-1].email, id=rows[-1].id) if extra and rows else None
+    return [_record(r) for r in rows], next_cursor
 
 
 def create_user(email: str, password: str, name: str = "") -> UserRecord:

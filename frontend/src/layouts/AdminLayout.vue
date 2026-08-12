@@ -201,6 +201,9 @@ async function onStop() {
         <div v-else-if="route.name === 'cameras'" class="toolbar-actions">
           <button type="button" @click="go('camera-new')">Добавить</button>
         </div>
+        <div v-else-if="route.name === 'users'" class="toolbar-actions">
+          <button type="button" @click="go('user-new')">Добавить</button>
+        </div>
       </div>
 
       <main class="app-content">

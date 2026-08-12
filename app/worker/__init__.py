@@ -61,8 +61,6 @@ class PipelineManager:
             n = len(self._camera_ids)
             return f"активен · {n} кам." if n else "активен"
         if self._last_error:
-            if self._last_error == "no enabled cameras":
-                return "нет включённых камер"
             return self._last_error
         return "запускается…"
 
@@ -113,8 +111,8 @@ class PipelineManager:
 
             if not cameras:
                 self._running = False
-                self._last_error = "no enabled cameras"
-                logger.info("Pipeline idle: no enabled cameras")
+                self._last_error = "нет включённых камер"
+                logger.info("Pipeline idle: нет включённых камер")
                 self._wait_or_reload(10.0)
                 continue
 

@@ -1,4 +1,4 @@
-import type { Camera, CameraList, NodeSettings, SendEvent, Session, TriggerEvent, User, UserList, WorkerStatus } from "./types";
+import type { Camera, CameraList, CameraQuery, HistoryPage, HistoryQuery, NodeSettings, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -32,6 +32,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+function qs(query: Record<string, string | number | boolean | undefined>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === "") continue;
+    params.set(key, String(value));
+  }
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
 export const api = {
   session: () => request<Session>("/api/v1/auth/session"),
   login: (email: string, password: string, password_confirm = "") =>
@@ -46,7 +56,7 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
-  cameras: () => request<CameraList>("/api/v1/cameras"),
+  cameras: (query: CameraQuery = {}) => request<CameraList>(`/api/v1/cameras${qs(query)}`),
   upsertCamera: (body: { id: string; name: string; main_uri: string; enabled: boolean }) =>
     request<Camera>("/api/v1/cameras", {
       method: "POST",
@@ -69,9 +79,11 @@ export const api = {
   worker: () => request<WorkerStatus>("/api/v1/worker"),
   workerStart: () => request<WorkerStatus>("/api/v1/worker/start", { method: "POST" }),
   workerStop: () => request<WorkerStatus>("/api/v1/worker/stop", { method: "POST" }),
-  historyTriggers: () => request<TriggerEvent[]>("/api/v1/history/triggers"),
-  historySends: () => request<SendEvent[]>("/api/v1/history/sends"),
-  users: () => request<UserList>("/api/v1/users"),
+  historyTriggers: (query: HistoryQuery = {}) =>
+    request<HistoryPage<TriggerEvent>>(`/api/v1/history/triggers${qs(query)}`),
+  historySends: (query: HistoryQuery = {}) =>
+    request<HistoryPage<SendEvent>>(`/api/v1/history/sends${qs(query)}`),
+  users: (query: UserQuery = {}) => request<UserList>(`/api/v1/users${qs(query)}`),
   getUser: (id: string) => request<User>(`/api/v1/users/${encodeURIComponent(id)}`),
   createUser: (body: { email: string; password: string; name: string }) =>
     request<User>("/api/v1/users", {

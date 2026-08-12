@@ -140,7 +140,8 @@ input:focus-visible,
   white-space: nowrap;
 }
 .form-floating { position: relative; flex: 1; min-width: 0; }
-.form-floating input {
+.form-floating input,
+.form-floating select {
   width: 100%;
   height: 43px;
   padding: 0.75rem 1rem;
@@ -150,9 +151,11 @@ input:focus-visible,
   color: var(--text);
   font: inherit;
 }
+.form-floating select { cursor: pointer; }
 .ig.has-addon .form-floating input { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .form-floating input::placeholder { color: var(--muted); }
-.form-floating input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgb(27 132 255 / 0.12); }
+.form-floating input:focus,
+.form-floating select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgb(27 132 255 / 0.12); }
 .form-floating input[aria-invalid="true"] { border-color: var(--err); }
 .form-floating input:read-only {
   background: #f9f9f9;
@@ -436,6 +439,11 @@ input:focus-visible,
   justify-content: flex-end;
   border-top: 1px solid var(--line);
   padding-top: 1.1rem;
+}
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
 }
 
 .stats {

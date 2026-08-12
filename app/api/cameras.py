@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api import ApiAuth
+from app.paging import cursor_id, cursor_or_400
 from app.schemas import CameraIn, CameraListOut, CameraOut
 from app.storage import get_store
 from app.worker import get_manager
@@ -12,11 +15,41 @@ from app.worker import get_manager
 router = APIRouter(prefix="/api/v1/cameras", tags=["cameras"], dependencies=[ApiAuth])
 
 
+def _aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 @router.get("", response_model=CameraListOut)
-def list_cameras() -> CameraListOut:
+def list_cameras(
+    q: str = Query(default=""),
+    enabled: bool | None = Query(default=None),
+    since: datetime | None = Query(default=None),
+    until: datetime | None = Query(default=None),
+    cursor: str = Query(default=""),
+    limit: int | None = Query(default=None, ge=1, le=200),
+) -> CameraListOut:
     store = get_store()
     settings = store.get_settings()
-    cams = store.list_cameras()
+    after_id = cursor_id(cursor_or_400(cursor))
+    paginated = limit is not None or after_id is not None
+    page_size = (limit or 25) if paginated else None
+    filtered = bool(q.strip()) or enabled is not None or since is not None or until is not None
+    next_cursor = None
+    if paginated or filtered:
+        cams, next_cursor = store.search_cameras(
+            q=q,
+            enabled=enabled,
+            since=_aware(since),
+            until=_aware(until),
+            after_id=after_id,
+            limit=page_size,
+        )
+    else:
+        cams = store.list_cameras()
     updated = None
     if cams:
         updated = max(c.updated_at for c in cams)
@@ -24,6 +57,7 @@ def list_cameras() -> CameraListOut:
         node_id=settings.node_id,
         cameras=cams,
         updated_at=updated,
+        next_cursor=next_cursor,
     )
 
 

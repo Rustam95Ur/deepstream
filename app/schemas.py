@@ -40,6 +40,7 @@ class CameraListOut(BaseModel):
     node_id: str
     cameras: list[CameraOut]
     updated_at: datetime | None = None
+    next_cursor: str | None = None
 
 
 class HealthOut(BaseModel):
@@ -74,6 +75,11 @@ class TriggerEventOut(BaseModel):
     created_at: datetime
 
 
+class TriggerHistoryOut(BaseModel):
+    items: list[TriggerEventOut]
+    next_cursor: str | None = None
+
+
 class SendEventOut(BaseModel):
     event_id: str
     sink: str
@@ -82,6 +88,11 @@ class SendEventOut(BaseModel):
     http_status: int | None = None
     error: str = ""
     created_at: datetime
+
+
+class SendHistoryOut(BaseModel):
+    items: list[SendEventOut]
+    next_cursor: str | None = None
 
 
 def _normalize_email(value: str) -> str:
@@ -146,6 +157,8 @@ class UserOut(BaseModel):
 
 class UserListOut(BaseModel):
     users: list[UserOut]
+    next_cursor: str | None = None
+    total: int = 0
 
 
 class LoginIn(BaseModel):
