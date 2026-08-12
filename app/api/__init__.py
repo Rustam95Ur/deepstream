@@ -1,10 +1,11 @@
-"""API auth (optional Bearer token)."""
+"""API auth (Bearer token, UI cookie, or optional query)."""
 
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request, status
 
 from app.storage import get_store
+from app.web.session import is_authed
 
 
 def require_api_token(request: Request) -> None:
@@ -15,8 +16,9 @@ def require_api_token(request: Request) -> None:
     auth = (request.headers.get("Authorization") or "").strip()
     if auth == f"Bearer {expected}":
         return
-    # Also allow token query for simple UI forms (same origin only)
     if request.query_params.get("token") == expected:
+        return
+    if is_authed(request):
         return
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

@@ -6,7 +6,7 @@ One Django Campus can attach multiple nodes (different GPUs / machines).
 ## Features
 
 - Local camera registry (`GET/POST/DELETE /api/v1/cameras`) — Django imports like SmartBox
-- Settings UI at `/` — `cameras_url`, `triggers_url`, trigger thresholds, `node_id`
+- Settings UI at `/` (Vue SPA behind nginx in Docker)
 - Trigger sinks: HTTP POST (primary), optional Celery LPUSH (legacy)
 - Optional pull from `cameras_url` on an interval
 - Pipeline runs in a background thread when `pyservicemaker` is available
@@ -25,6 +25,27 @@ Open http://127.0.0.1:8080 — add cameras, set `triggers_url`.
 
 Pipeline stays idle without DeepStream (`pyservicemaker`); API/UI still work.
 
+## Frontend (Vue)
+
+UI lives in `frontend/` (Vue 3 + Vite). Locally FastAPI can serve `frontend/dist`. In Docker the UI is built into the **nginx** image.
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+Dev with hot reload (proxy to API on :8080):
+
+```bash
+# terminal 1: API
+poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
+# terminal 2: Vue
+cd frontend && npm run dev
+```
+
+Open http://127.0.0.1:5173
+
 ## GPU container (Docker Compose)
 
 1. Copy prepared YOLO tree into `models/yolo11n` (see `models/README.md`).
@@ -35,14 +56,9 @@ Pipeline stays idle without DeepStream (`pyservicemaker`); API/UI still work.
 docker compose up --build -d
 ```
 
-UI/API: http://127.0.0.1:8080
+nginx (UI + `/api` proxy): http://127.0.0.1:8080
 
-Requires NVIDIA Container Toolkit (`gpus: all`). Equivalent one-shot:
-
-```bash
-docker build -t nexus-deepstream .
-docker run --gpus all -p 8080:8080 -v nds-data:/data/nexus_deepstream nexus-deepstream
-```
+Requires NVIDIA Container Toolkit (`gpus: all`). The DeepStream API container is internal; nginx is the public entry.
 
 ## API (for Django)
 
@@ -54,8 +70,11 @@ docker run --gpus all -p 8080:8080 -v nds-data:/data/nexus_deepstream nexus-deep
 | DELETE | `/api/v1/cameras/{id}` | remove |
 | GET/PUT | `/api/v1/settings` | node settings |
 | POST | `/api/v1/cameras-pull` | pull from `cameras_url` |
+| GET | `/api/v1/auth/session` | UI session status |
+| POST | `/api/v1/auth/login` | UI session cookie |
+| POST | `/api/v1/auth/logout` | clear UI cookie |
 
-If `api_token` is set in settings, send `Authorization: Bearer <token>`.
+If `api_token` is set in settings, send `Authorization: Bearer <token>` (the Vue UI uses a cookie instead).
 
 ### Trigger payload (POST to `triggers_url`)
 

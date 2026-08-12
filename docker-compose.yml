@@ -1,10 +1,12 @@
 services:
   nexus-deepstream:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: nexus-deepstream:latest
     container_name: nexus-deepstream
-    ports:
-      - "${NEXUS_DS_PORT:-8080}:8080"
+    expose:
+      - "8080"
     env_file:
       - path: .env
         required: false
@@ -19,6 +21,18 @@ services:
       - nexus-ds-data:/data/nexus_deepstream
       - ./models:/opt/nexus_deepstream/models
     gpus: all
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    image: nexus-deepstream-nginx:latest
+    container_name: nexus-deepstream-nginx
+    ports:
+      - "${NEXUS_DS_PORT:-8080}:80"
+    depends_on:
+      - nexus-deepstream
     restart: unless-stopped
 
 volumes:

@@ -10,11 +10,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
+from app.api.auth import router as auth_router
 from app.api.cameras import router as cameras_router
 from app.api.node import router as node_router
 from app.storage import get_store
-from app.web import router as web_router
-from app.web.session import UiAuthMiddleware
+from app.web import SPA_DIR, router as web_router
 from app.worker import get_manager
 from app.worker.cameras_poller import get_poller
 
@@ -53,8 +53,12 @@ app = FastAPI(
 static_dir = Path(__file__).resolve().parent / "web" / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-app.add_middleware(UiAuthMiddleware)
 
+spa_assets = SPA_DIR / "assets"
+if spa_assets.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(spa_assets)), name="spa-assets")
+
+app.include_router(auth_router)
 app.include_router(node_router)
 app.include_router(cameras_router)
 app.include_router(web_router)

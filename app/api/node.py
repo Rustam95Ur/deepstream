@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Response
 
 from app import __version__
 from app.api import ApiAuth
 from app.schemas import HealthOut, WorkerStatusOut
 from app.settings import NodeSettings
 from app.storage import get_store
+from app.web.session import clear_session_cookie, set_session_cookie
 from app.worker import get_manager, pipeline_available
 from app.worker.cameras_poller import get_poller
 
@@ -37,22 +38,32 @@ def health() -> HealthOut:
     )
 
 
+def _sync_ui_cookie(response: Response, token: str) -> None:
+    token = (token or "").strip()
+    if token:
+        set_session_cookie(response, token)
+    else:
+        clear_session_cookie(response)
+
+
 @router.get("/settings", response_model=NodeSettings, dependencies=[ApiAuth])
 def get_settings() -> NodeSettings:
     return get_store().get_settings()
 
 
 @router.put("/settings", response_model=NodeSettings, dependencies=[ApiAuth])
-def put_settings(body: NodeSettings) -> NodeSettings:
+def put_settings(body: NodeSettings, response: Response) -> NodeSettings:
     updated = get_store().update_settings(body.model_dump())
     get_manager().request_reload()
+    _sync_ui_cookie(response, updated.api_token)
     return updated
 
 
 @router.patch("/settings", response_model=NodeSettings, dependencies=[ApiAuth])
-def patch_settings(body: dict = Body(...)) -> NodeSettings:
+def patch_settings(response: Response, body: dict = Body(...)) -> NodeSettings:
     updated = get_store().update_settings(body)
     get_manager().request_reload()
+    _sync_ui_cookie(response, updated.api_token)
     return updated
 
 
