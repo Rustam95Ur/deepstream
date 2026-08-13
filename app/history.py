@@ -31,7 +31,7 @@ def _utcnow() -> datetime:
 
 
 def _slim_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    return {
+    out: dict[str, Any] = {
         "event_id": payload.get("event_id"),
         "camera_id": payload.get("camera_id"),
         "trigger_type": payload.get("trigger_type"),
@@ -40,6 +40,10 @@ def _slim_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "node_id": payload.get("node_id"),
         "evidence": payload.get("evidence") or {},
     }
+    for key in ("video_url", "video_key", "video_bucket", "source_video"):
+        if payload.get(key):
+            out[key] = payload[key]
+    return out
 
 
 class HistoryWriter:

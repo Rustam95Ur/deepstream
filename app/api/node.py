@@ -8,6 +8,7 @@ from app import __version__
 from app.api import ApiAuth
 from app.schemas import HealthOut, WorkerStatusOut
 from app.settings import NodeSettings
+from app.ds.ring_buffer import get_ring_buffer
 from app.storage import get_store
 from app.worker import get_manager, pipeline_available
 from app.worker.cameras_poller import get_poller
@@ -46,6 +47,7 @@ def get_settings() -> NodeSettings:
 def put_settings(body: NodeSettings) -> NodeSettings:
     updated = get_store().update_settings(body.model_dump())
     get_manager().request_reload()
+    get_ring_buffer().request_refresh()
     return updated
 
 
@@ -53,6 +55,7 @@ def put_settings(body: NodeSettings) -> NodeSettings:
 def patch_settings(body: dict = Body(...)) -> NodeSettings:
     updated = get_store().update_settings(body)
     get_manager().request_reload()
+    get_ring_buffer().request_refresh()
     return updated
 
 
@@ -74,6 +77,7 @@ def worker_stop() -> WorkerStatusOut:
 @router.post("/worker/reload", response_model=WorkerStatusOut, dependencies=[ApiAuth])
 def worker_reload() -> WorkerStatusOut:
     get_manager().request_reload()
+    get_ring_buffer().request_refresh()
     return get_manager().status()
 
 

@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from app.api import ApiAuth
 from app.paging import cursor_id, cursor_or_400
 from app.schemas import CameraIn, CameraListOut, CameraOut
+from app.ds.ring_buffer import get_ring_buffer
 from app.storage import get_store
 from app.worker import get_manager
 
@@ -81,6 +82,7 @@ def create_or_upsert_camera(body: CameraIn) -> CameraOut:
         )
     cam, _created = store.upsert_camera(body)
     get_manager().request_reload()
+    get_ring_buffer().request_refresh()
     return cam
 
 
@@ -93,6 +95,7 @@ def update_camera(camera_id: str, body: CameraIn) -> CameraOut:
         raise HTTPException(status_code=404, detail="Camera not found")
     cam, _ = store.upsert_camera(body)
     get_manager().request_reload()
+    get_ring_buffer().request_refresh()
     return cam
 
 
@@ -101,3 +104,4 @@ def delete_camera(camera_id: str) -> None:
     if not get_store().delete_camera(camera_id):
         raise HTTPException(status_code=404, detail="Camera not found")
     get_manager().request_reload()
+    get_ring_buffer().request_refresh()

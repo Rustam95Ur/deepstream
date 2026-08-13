@@ -18,6 +18,7 @@ export interface NodeSettings {
   triggers_timeout_sec: number;
   enable_http_sink: boolean;
   enable_log_sink: boolean;
+  enable_clip_record: boolean;
   trigger_mode: string;
   enabled_triggers: string[];
   min_tracks: number;

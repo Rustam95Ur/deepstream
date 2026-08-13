@@ -47,12 +47,15 @@ class AsyncSink:
         return str(payload.get("event_id") or "") or None
 
     def close(self) -> None:
-        deadline = time.monotonic() + 3.0
+        deadline = time.monotonic() + float(
+            os.environ.get("NEXUS_DS_SINK_CLOSE_S") or 120
+        )
         while not self._queue.empty() and time.monotonic() < deadline:
-            time.sleep(0.05)
+            time.sleep(0.2)
         self._stop.set()
+        remain = max(5.0, deadline - time.monotonic())
         for t in self._threads:
-            t.join(timeout=2.0)
+            t.join(timeout=remain)
 
     def _loop(self) -> None:
         while not self._stop.is_set():

@@ -19,6 +19,9 @@ def build_payload(
     source_video: str | None = None,
     source_offset_s: float | None = None,
     node_id: str = "",
+    video_url: str | None = None,
+    video_key: str | None = None,
+    video_bucket: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "event_id": event_id or str(uuid.uuid4()),
@@ -40,4 +43,10 @@ def build_payload(
         payload["source_video"] = source_video
     if source_offset_s is not None:
         payload["source_offset_s"] = float(source_offset_s)
+    if video_url:
+        payload["video_url"] = video_url
+    if video_key:
+        payload["video_key"] = video_key
+    if video_bucket:
+        payload["video_bucket"] = video_bucket
     return payload

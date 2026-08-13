@@ -40,6 +40,7 @@ class NodeSettings(BaseModel):
 
     enable_http_sink: bool = True
     enable_log_sink: bool = True
+    enable_clip_record: bool = True
 
     # Trigger / record / pipeline (same semantics as Campus Redis config)
     trigger_mode: str = "convergence"

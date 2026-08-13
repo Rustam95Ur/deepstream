@@ -15,6 +15,7 @@ class CameraConfig:
     camera_id: str
     main_uri: str
     enabled: bool = True
+    name: str = ""
 
 
 @dataclass(slots=True)
@@ -81,6 +82,7 @@ def app_config_from_dict(raw: dict[str, Any]) -> AppConfig:
                 camera_id=cam_id,
                 main_uri=uri,
                 enabled=bool(item.get("enabled", True)),
+                name=str(item.get("name") or cam_id).strip() or cam_id,
             )
         )
 
@@ -154,6 +156,7 @@ def app_config_from_settings(
                 camera_id=cam_id,
                 main_uri=uri,
                 enabled=bool(d.get("enabled", True)),
+                name=str(d.get("name") or cam_id).strip() or cam_id,
             )
         )
     raw = {

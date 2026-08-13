@@ -123,7 +123,7 @@ class PipelineManager:
                 )
 
             cfg = app_config_from_settings(settings, cameras)
-            sink = build_sink(settings)
+            sink = build_sink(settings, cameras=cfg.enabled_cameras)
             self._running = True
             self._last_started_at = datetime.now(timezone.utc)
             self._last_error = ""

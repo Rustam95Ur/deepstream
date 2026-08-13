@@ -95,6 +95,16 @@ services:
       DEEPSTREAM_YOLO_DIR: /opt/nexus_deepstream/models/yolo11n
       DEEPSTREAM_WORK_DIR: /tmp/nexus_deepstream
       DEEPSTREAM_DEBUG_DIR: /data/nexus_deepstream/debug
+      NEXUS_DS_MINIO_ENDPOINT_URL: ${NEXUS_DS_MINIO_ENDPOINT_URL:-http://minio:9000}
+      NEXUS_DS_MINIO_ACCESS_KEY: ${NEXUS_DS_MINIO_ACCESS_KEY:-minioadmin}
+      NEXUS_DS_MINIO_SECRET_KEY: ${NEXUS_DS_MINIO_SECRET_KEY:-minioadmin}
+      NEXUS_DS_MINIO_REGION: ${NEXUS_DS_MINIO_REGION:-us-east-1}
+      NEXUS_DS_MINIO_BUCKET: ${NEXUS_DS_MINIO_BUCKET:-incidents}
+      NEXUS_DS_MINIO_KEY_PREFIX: ${NEXUS_DS_MINIO_KEY_PREFIX:-incidents/ingest/}
+      NEXUS_DS_MINIO_PUBLIC_URL: ${NEXUS_DS_MINIO_PUBLIC_URL:-http://127.0.0.1:9200}
+      NEXUS_DS_UTC_OFFSET_HOURS: ${NEXUS_DS_UTC_OFFSET_HOURS:-5}
+      NEXUS_DS_RING_SEGMENT_DIR: /data/nexus_deepstream/incident_ring_buffer
+      NEXUS_DS_CLIPS_DIR: /data/nexus_deepstream/incident_clips
     volumes:
       - nexus-ds-data:/data/nexus_deepstream
       - ./models:/opt/nexus_deepstream/models
@@ -104,7 +114,48 @@ services:
         condition: service_healthy
       pgbouncer:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: nexus-deepstream-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9200}:9000"
+      - "${MINIO_CONSOLE_PORT:-9201}:9001"
+    volumes:
+      - nexus-ds-minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: nexus-deepstream-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${NEXUS_DS_MINIO_BUCKET:-incidents}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb -p "local/$$MINIO_BUCKET"
+        exit 0
+    restart: "no"
 
   nginx:
     build:
@@ -121,3 +172,4 @@ services:
 volumes:
   nexus-ds-data:
   nexus-ds-pg:
+  nexus-ds-minio:

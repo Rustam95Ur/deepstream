@@ -7,7 +7,7 @@ One Django Campus can attach multiple nodes (different GPUs / machines).
 
 - Local camera registry (`GET/POST/DELETE /api/v1/cameras`) — Django imports like SmartBox
 - Settings UI at `/` (Vue SPA behind nginx in Docker)
-- Trigger sink: HTTP POST to `triggers_url`. Enable or disable `presence`, `convergence`, `vif`, `stream_silent` in settings (`enabled_triggers`).
+- Trigger sink: HTTP POST to `triggers_url` after cutting an incident clip from the RTSP ring-buffer (same as Campus `rtsp_writer`) and uploading it to MinIO (`video_url` in the payload). Enable or disable `presence`, `convergence`, `vif`, `stream_silent` in settings (`enabled_triggers`).
 - Optional pull from `cameras_url` on an interval
 - Pipeline runs in a background thread when `pyservicemaker` is available
 
@@ -65,7 +65,7 @@ Postgres stores cameras, users, integration URLs (`cameras_url` / `triggers_url`
 
 ## Production stack
 
-Compose runs four services: **Postgres 16** (tuned WAL/buffers) → **PgBouncer** (transaction pool) → **API** (one uvicorn worker, GPU pipeline in-process) → **nginx** (SPA + keep-alive reverse proxy).
+Compose runs five services: **Postgres 16** (tuned WAL/buffers) → **PgBouncer** (transaction pool) → **MinIO** (incident clips) → **API** (one uvicorn worker, GPU pipeline in-process) → **nginx** (SPA + keep-alive reverse proxy).
 
 The API talks to Postgres through PgBouncer (internal `:5432` on the `pgbouncer` service). Migrations use `NEXUS_DS_DATABASE_MIGRATE_URL` straight to the `postgres` service (DDL is not safe in transaction pooling).
 
@@ -115,9 +115,14 @@ Compatible with Campus DeepStream contract:
   "post_s": 15,
   "evidence": {},
   "node_id": "ds-1",
-  "model_versions": {"detector": "yolo11n", "first_line": "nexus_deepstream"}
+  "model_versions": {"detector": "yolo11n", "first_line": "nexus_deepstream"},
+  "video_url": "http://minio:9000/incidents/incidents/ingest/...?X-Amz-...",
+  "video_bucket": "incidents",
+  "video_key": "incidents/ingest/<date>/<camera>/<hour>/<event_id>.mp4"
 }
 ```
+
+On an incident trigger the node waits `post_s` (like Campus `rtsp_writer`), concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads the MP4 to MinIO, then POSTs. `stream_silent` skips the clip. The ring-buffer (`gst-launch` + `splitmuxsink`, ~3s segments) runs 24/7 for enabled RTSP cameras.
 
 ## Multi-node with one Django
 

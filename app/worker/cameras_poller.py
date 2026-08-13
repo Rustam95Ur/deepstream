@@ -89,6 +89,9 @@ class CamerasPoller:
         after = {c.id for c in cams}
         if before != after:
             get_manager().request_reload()
+            from app.ds.ring_buffer import get_ring_buffer
+
+            get_ring_buffer().request_refresh()
         logger.info("Pulled %s cameras from %s", len(cams), url)
         return len(cams)
 

@@ -241,12 +241,6 @@ class TriggerEngine:
             evidence,
         )
         try:
-            from app.history import record_trigger
-
-            record_trigger(payload)
-        except Exception:
-            logger.exception("failed to persist trigger history")
-        try:
             self.sink.send(payload)
         except Exception:
             logger.exception("failed to send trigger")

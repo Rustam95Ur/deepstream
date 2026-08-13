@@ -19,6 +19,7 @@ from app.db import init_db
 from app.history import get_history_writer
 from app.storage import get_store
 from app.web import SPA_DIR, router as web_router
+from app.ds.ring_buffer import get_ring_buffer
 from app.worker import get_manager
 from app.worker.cameras_poller import get_poller
 
@@ -42,11 +43,13 @@ async def lifespan(_app: FastAPI):
         store.data_dir,
     )
     get_poller().start()
+    get_ring_buffer().start()
     if settings.auto_start_pipeline:
         get_manager().start()
     yield
     get_poller().stop()
     get_manager().stop()
+    get_ring_buffer().stop()
     get_history_writer().stop()
 
 

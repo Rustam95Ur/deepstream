@@ -19,7 +19,8 @@ WORKDIR /opt/nexus_deepstream
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      git wget ca-certificates build-essential \
+      git wget ca-certificates build-essential python3-gi python3-gst-1.0 \
+      gstreamer1.0-tools ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml poetry.lock /opt/nexus_deepstream/
