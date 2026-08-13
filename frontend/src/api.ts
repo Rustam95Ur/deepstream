@@ -1,4 +1,4 @@
-import type { Camera, CameraList, CameraQuery, HistoryPage, HistoryQuery, NodeSettings, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, WorkerStatus } from "./types";
+import type { Camera, CameraList, CameraQuery, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -75,7 +75,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   cameras: (query: CameraQuery = {}) => request<CameraList>(`/api/v1/cameras${qs(query)}`),
-  upsertCamera: (body: { id: string; name: string; main_uri: string; enabled: boolean }) =>
+  upsertCamera: (body: { id: string; name: string; main_uri: string; enabled: boolean; enabled_triggers?: string[] | null }) =>
     request<Camera>("/api/v1/cameras", {
       method: "POST",
       body: JSON.stringify(body),
@@ -90,17 +90,44 @@ export const api = {
         enabled: body.enabled,
         external_id: body.external_id,
         meta: body.meta,
+        enabled_triggers: body.enabled_triggers,
       }),
     }),
   deleteCamera: (id: string) =>
     request<void>(`/api/v1/cameras/${encodeURIComponent(id)}`, { method: "DELETE" }),
   worker: () => request<WorkerStatus>("/api/v1/worker"),
+  videoHealth: () => request<VideoHealth>("/api/v1/video/health"),
   workerStart: () => request<WorkerStatus>("/api/v1/worker/start", { method: "POST" }),
   workerStop: () => request<WorkerStatus>("/api/v1/worker/stop", { method: "POST" }),
   historyTriggers: (query: HistoryQuery = {}) =>
     request<HistoryPage<TriggerEvent>>(`/api/v1/history/triggers${qs(query)}`),
   historySends: (query: HistoryQuery = {}) =>
     request<HistoryPage<SendEvent>>(`/api/v1/history/sends${qs(query)}`),
+  historyOutbound: (query: HistoryQuery = {}) =>
+    request<HistoryPage<OutboundJob>>(`/api/v1/history/outbound${qs(query)}`),
+  triggerClip: (eventId: string) =>
+    request<{ event_id: string; url: string; bucket: string; key: string }>(
+      `/api/v1/history/triggers/${encodeURIComponent(eventId)}/clip`,
+    ),
+  resendTrigger: (eventId: string) =>
+    request<{ event_id: string; queued: number }>(
+      `/api/v1/history/triggers/${encodeURIComponent(eventId)}/resend`,
+      { method: "POST" },
+    ),
+  retryOutbound: (jobId: string) =>
+    request<OutboundJob>(`/api/v1/history/outbound/${encodeURIComponent(jobId)}/retry`, {
+      method: "POST",
+    }),
+  webhooks: () => request<{ items: Webhook[] }>("/api/v1/webhooks"),
+  createWebhook: (body: WebhookIn) =>
+    request<Webhook>("/api/v1/webhooks", { method: "POST", body: JSON.stringify(body) }),
+  updateWebhook: (id: string, body: WebhookIn) =>
+    request<Webhook>(`/api/v1/webhooks/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteWebhook: (id: string) =>
+    request<void>(`/api/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }),
   users: (query: UserQuery = {}) => request<UserList>(`/api/v1/users${qs(query)}`),
   getUser: (id: string) => request<User>(`/api/v1/users/${encodeURIComponent(id)}`),
   createUser: (body: { email: string; password: string; name: string }) =>

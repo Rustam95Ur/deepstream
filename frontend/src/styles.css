@@ -119,12 +119,21 @@ input:focus-visible,
   column-gap: 0;
   row-gap: 0.45rem;
 }
-.ig.has-addon .form-label { grid-column: 1 / -1; }
+.ig.has-addon .form-label,
+.ig.has-addon .field-hint { grid-column: 1 / -1; }
 .form-label {
   display: block;
   color: var(--gray-800);
   font-size: 1.05rem;
   font-weight: 600;
+}
+.field-hint {
+  margin: -0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 400;
+  line-height: 1.35;
+  text-wrap: pretty;
 }
 .ig-addon {
   display: flex;
@@ -568,6 +577,14 @@ td.uri { word-break: break-all; color: var(--muted); max-width: 320px; }
 }
 .modal { width: min(24rem, 100%); }
 .modal.modal-form { width: min(40rem, 100%); }
+.modal.modal-video { width: min(56rem, 100%); }
+.clip-player {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  background: #111;
+  border-radius: var(--radius-sm);
+}
 .modal-actions { margin-top: 1.1rem; }
 .td-action .row { justify-content: flex-end; }
 .skeleton { min-height: 8.5rem; background: #f1f1f4; }

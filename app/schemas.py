@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.trigger_types import camera_trigger_override
+
 
 class CameraIn(BaseModel):
     id: str = Field(..., min_length=1, max_length=128, description="Stable id on this node")
@@ -19,6 +21,10 @@ class CameraIn(BaseModel):
         description="Optional Django Camera.pk once synced",
     )
     meta: dict[str, Any] = Field(default_factory=dict)
+    enabled_triggers: list[str] | None = Field(
+        default=None,
+        description="None = inherit node settings. Empty list = none on this camera.",
+    )
 
     @field_validator("main_uri")
     @classmethod
@@ -29,6 +35,11 @@ class CameraIn(BaseModel):
     @classmethod
     def _strip_ids(cls, v: str) -> str:
         return (v or "").strip()
+
+    @field_validator("enabled_triggers", mode="before")
+    @classmethod
+    def _triggers(cls, v: object) -> list[str] | None:
+        return camera_trigger_override(v)
 
 
 class CameraOut(CameraIn):
@@ -66,13 +77,117 @@ class WorkerStatusOut(BaseModel):
     camera_ids: list[str] = Field(default_factory=list)
 
 
+class RingCameraHealthOut(BaseModel):
+    camera_id: str
+    name: str
+    alive: bool
+    stalled: bool = False
+    last_segment_age_s: float | None = None
+    restarts: int = 0
+    codec: str = ""
+
+
+class VideoHealthOut(BaseModel):
+    status: str
+    gst_available: bool = False
+    clip_record: bool = False
+    ring_running: bool = False
+    pipeline: WorkerStatusOut
+    cameras: list[RingCameraHealthOut] = Field(default_factory=list)
+
+
+class WebhookIn(BaseModel):
+    name: str = Field(default="", max_length=128)
+    url: str = Field(..., min_length=8, max_length=2048)
+    enabled: bool = True
+    hmac_secret: str | None = Field(default=None, max_length=512)
+    timeout_sec: float = Field(default=5.0, ge=1.0, le=120.0)
+    max_retries: int = Field(default=5, ge=0, le=20)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        return (v or "").strip() or "webhook"
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        url = (v or "").strip()
+        if not url.startswith(("http://", "https://")):
+            raise ValueError("URL должен начинаться с http:// или https://")
+        return url
+
+
+class WebhookOut(BaseModel):
+    id: str
+    name: str
+    url: str
+    enabled: bool
+    hmac_configured: bool = False
+    timeout_sec: float = 5.0
+    max_retries: int = 5
+    created_at: datetime
+    updated_at: datetime
+
+
+class WebhookListOut(BaseModel):
+    items: list[WebhookOut]
+
+
+class OutboundJobOut(BaseModel):
+    id: str
+    event_id: str
+    webhook_id: str
+    url: str
+    attempts: int
+    max_attempts: int
+    status: str
+    last_error: str = ""
+    http_status: int | None = None
+    next_attempt_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class OutboundJobListOut(BaseModel):
+    items: list[OutboundJobOut]
+    next_cursor: str | None = None
+
+
+class ResendOut(BaseModel):
+    event_id: str
+    queued: int
+
+
+class ClipUrlOut(BaseModel):
+    event_id: str
+    url: str = ""
+    bucket: str = ""
+    key: str = ""
+
+
+class ClipOut(BaseModel):
+    url: str = ""
+    bucket: str = ""
+    key: str = ""
+
+
 class TriggerEventOut(BaseModel):
     event_id: str
     camera_id: str
+    camera_name: str = ""
     trigger_type: str
     category: str
     evidence: dict[str, Any] = Field(default_factory=dict)
+    clip: ClipOut = Field(default_factory=ClipOut)
+    video_url: str = ""
+    video_bucket: str = ""
+    video_key: str = ""
     created_at: datetime
+
+
+class TriggerEventDetailOut(TriggerEventOut):
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class TriggerHistoryOut(BaseModel):
@@ -81,6 +196,7 @@ class TriggerHistoryOut(BaseModel):
 
 
 class SendEventOut(BaseModel):
+    id: str = ""
     event_id: str
     sink: str
     url: str = ""

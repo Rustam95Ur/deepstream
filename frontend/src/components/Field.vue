@@ -13,6 +13,7 @@ const props = withDefaults(
     readonly?: boolean;
     minlength?: number;
     maxlength?: number;
+    hint?: string;
   }>(),
   { type: "text" },
 );
@@ -35,6 +36,7 @@ function onInput(event: Event) {
 <template>
   <div class="ig" :class="{ 'has-addon': !!addon }">
     <label class="form-label" :for="id">{{ label }}</label>
+    <p v-if="hint" class="field-hint">{{ hint }}</p>
     <span v-if="addon" class="ig-addon">{{ addon }}</span>
     <div class="form-floating">
       <input

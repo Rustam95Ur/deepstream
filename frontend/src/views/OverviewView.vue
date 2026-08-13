@@ -1,5 +1,36 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, ref } from "vue";
+import { api } from "../api";
 import { enabledCount, store } from "../store";
+import type { VideoHealth } from "../types";
+
+const health = ref<VideoHealth | null>(null);
+let timer: ReturnType<typeof setInterval> | null = null;
+
+async function loadHealth() {
+  try {
+    health.value = await api.videoHealth();
+  } catch {
+    health.value = null;
+  }
+}
+
+function ringLabel(cam: VideoHealth["cameras"][number]) {
+  if (!cam.alive) return "упал";
+  if (cam.stalled) return "застой";
+  return "живой";
+}
+
+onMounted(() => {
+  void loadHealth();
+  timer = setInterval(() => {
+    void loadHealth();
+  }, 8000);
+});
+
+onUnmounted(() => {
+  if (timer) clearInterval(timer);
+});
 </script>
 
 <template>
@@ -58,7 +89,7 @@ import { enabledCount, store } from "../store";
 
       <article class="card stat-card">
         <div class="card-head">
-          <h2>Автозапуск</h2>
+          <h2>Ring-buffer</h2>
         </div>
         <div class="stat-body">
           <span class="stat-icon" aria-hidden="true">
@@ -67,12 +98,58 @@ import { enabledCount, store } from "../store";
               <path d="M12 8v4l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
             </svg>
           </span>
-          <p class="stat-v">{{ store.settings.auto_start_pipeline ? "вкл" : "выкл" }}</p>
+          <p class="stat-v" :class="health?.ring_running ? 'ok' : 'muted'">
+            {{ health?.ring_running ? "пишет" : (health ? "стоп" : "—") }}
+          </p>
+          <span class="badge" :class="health?.gst_available ? 'badge-ok' : 'badge-warn'">
+            {{ health?.gst_available ? "gst" : "нет gst" }}
+          </span>
         </div>
         <div class="card-foot">
-          <span>при старте процесса</span>
+          <span>{{ health?.clip_record ? "клипы включены" : "клипы выкл" }}</span>
         </div>
       </article>
     </div>
+
+    <section v-if="health?.cameras.length" class="card">
+      <div class="card-head">
+        <h2>Здоровье видеоконтура</h2>
+        <p class="lede">RTSP ring-buffer по каждой камере: процесс, сегменты, рестарты.</p>
+      </div>
+      <div class="card-body">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Камера</th>
+                <th>Статус</th>
+                <th>Кодек</th>
+                <th>Сегмент</th>
+                <th>Рестарты</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="cam in health.cameras" :key="cam.camera_id">
+                <td>{{ cam.name || cam.camera_id }}</td>
+                <td>
+                  <span
+                    class="pill"
+                    :class="{
+                      'pill-ok': cam.alive && !cam.stalled,
+                      'pill-err': !cam.alive || cam.stalled,
+                    }"
+                  >
+                    {{ ringLabel(cam) }}
+                  </span>
+                </td>
+                <td>{{ cam.codec || "—" }}</td>
+                <td>{{ cam.last_segment_age_s == null ? "нет" : `${cam.last_segment_age_s} с` }}</td>
+                <td>{{ cam.restarts }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   </div>
 </template>

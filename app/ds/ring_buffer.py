@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from app.ds.rtsp import resolve_codec, sanitize_rtsp_url
 from app.settings import _default_data_dir
@@ -390,6 +391,31 @@ class IncidentRingBufferSupervisor:
 
         self._recording_active = bool(self._workers)
 
+    def snapshot(self) -> dict[str, Any]:
+        now = time.time()
+        stall_after = segment_dur_sec() * _stall_multiplier()
+        cameras: list[dict[str, Any]] = []
+        for cam_id, w in list(self._workers.items()):
+            mtime = w.latest_segment_mtime()
+            age = (now - mtime) if mtime is not None else None
+            stalled = bool(age is not None and age > stall_after)
+            cameras.append(
+                {
+                    "camera_id": cam_id,
+                    "name": w.name,
+                    "alive": w.is_alive(),
+                    "stalled": stalled,
+                    "last_segment_age_s": round(age, 1) if age is not None else None,
+                    "restarts": int(w.total_restarts),
+                    "codec": w.codec,
+                }
+            )
+        return {
+            "gst_available": gst_launch_available(),
+            "ring_running": bool(self._recording_active),
+            "cameras": cameras,
+        }
+
     def _health_tick(self) -> None:
         now = time.time()
         stall_after = segment_dur_sec() * _stall_multiplier()
@@ -517,6 +543,16 @@ class RingBufferManager:
     def request_refresh(self) -> None:
         if self._supervisor is not None:
             self._supervisor.request_refresh()
+
+    def status(self) -> dict:
+        sup = self._supervisor
+        if sup is None:
+            return {
+                "gst_available": gst_launch_available(),
+                "ring_running": False,
+                "cameras": [],
+            }
+        return sup.snapshot()
 
 
 _manager: RingBufferManager | None = None

@@ -68,12 +68,13 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  nexus-deepstream:
+  nexus-deepstream-api:
     build:
       context: .
-      dockerfile: Dockerfile
-    image: nexus-deepstream:latest
-    container_name: nexus-deepstream
+      dockerfile: Dockerfile.api
+    image: nexus-deepstream-api:latest
+    container_name: nexus-deepstream-api
+    command: ["/bin/bash", "/opt/nexus_deepstream/shell/boot.sh"]
     expose:
       - "8080"
     env_file:
@@ -82,11 +83,67 @@ services:
     environment:
       NEXUS_DS_HOST: "0.0.0.0"
       NEXUS_DS_PORT: "8080"
+      NEXUS_DS_ROLE: api
       NEXUS_DS_DATA_DIR: /data/nexus_deepstream
       NEXUS_DS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus}@pgbouncer:5432/${POSTGRES_DB:-nexus_deepstream}
       NEXUS_DS_DATABASE_MIGRATE_URL: postgresql+psycopg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus}@postgres:5432/${POSTGRES_DB:-nexus_deepstream}
       NEXUS_DS_DB_POOL_SIZE: "20"
       NEXUS_DS_DB_MAX_OVERFLOW: "20"
+      NEXUS_DS_HISTORY_QUEUE: "20000"
+      NEXUS_DS_HISTORY_BATCH: "200"
+      NEXUS_DS_HISTORY_FLUSH_MS: "200"
+      NEXUS_DS_VIDEO_URL: http://nexus-deepstream-video:8081
+      NEXUS_DS_VIDEO_TOKEN: ${NEXUS_DS_VIDEO_TOKEN:-nexus-video-internal}
+      NEXUS_DS_MINIO_ENDPOINT_URL: ${NEXUS_DS_MINIO_ENDPOINT_URL:-http://minio:9000}
+      NEXUS_DS_MINIO_ACCESS_KEY: ${NEXUS_DS_MINIO_ACCESS_KEY:-minioadmin}
+      NEXUS_DS_MINIO_SECRET_KEY: ${NEXUS_DS_MINIO_SECRET_KEY:-minioadmin}
+      NEXUS_DS_MINIO_REGION: ${NEXUS_DS_MINIO_REGION:-us-east-1}
+      NEXUS_DS_MINIO_BUCKET: ${NEXUS_DS_MINIO_BUCKET:-incidents}
+      NEXUS_DS_MINIO_KEY_PREFIX: ${NEXUS_DS_MINIO_KEY_PREFIX:-incidents/ingest/}
+      NEXUS_DS_MINIO_PUBLIC_URL: ${NEXUS_DS_MINIO_PUBLIC_URL:-http://127.0.0.1:9200}
+      DEEPSTREAM_DEBUG_DIR: /data/nexus_deepstream/debug
+    volumes:
+      - nexus-ds-data:/data/nexus_deepstream
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v1/health', timeout=3)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nexus-deepstream-video:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nexus-deepstream:latest
+    container_name: nexus-deepstream-video
+    command: ["python3", "-m", "app.video"]
+    expose:
+      - "8081"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NEXUS_DS_ROLE: video
+      NEXUS_DS_VIDEO_HOST: "0.0.0.0"
+      NEXUS_DS_VIDEO_PORT: "8081"
+      NEXUS_DS_VIDEO_TOKEN: ${NEXUS_DS_VIDEO_TOKEN:-nexus-video-internal}
+      NEXUS_DS_DATA_DIR: /data/nexus_deepstream
+      NEXUS_DS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus}@pgbouncer:5432/${POSTGRES_DB:-nexus_deepstream}
+      NEXUS_DS_DB_POOL_SIZE: "10"
+      NEXUS_DS_DB_MAX_OVERFLOW: "10"
       NEXUS_DS_HISTORY_QUEUE: "20000"
       NEXUS_DS_HISTORY_BATCH: "200"
       NEXUS_DS_HISTORY_FLUSH_MS: "200"
@@ -108,8 +165,11 @@ services:
     volumes:
       - nexus-ds-data:/data/nexus_deepstream
       - ./models:/opt/nexus_deepstream/models
+      - ./app:/opt/nexus_deepstream/app
     gpus: all
     depends_on:
+      nexus-deepstream-api:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       pgbouncer:
@@ -165,8 +225,11 @@ services:
     container_name: nexus-deepstream-nginx
     ports:
       - "${NEXUS_DS_PORT:-8080}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - nexus-deepstream
+      nexus-deepstream-api:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.trigger_types import TRIGGER_TYPES, normalize_enabled_triggers
+from app.trigger_types import TRIGGER_TYPES, camera_trigger_override, normalize_enabled_triggers
 
 
 @dataclass(slots=True)
@@ -16,6 +16,7 @@ class CameraConfig:
     main_uri: str
     enabled: bool = True
     name: str = ""
+    enabled_triggers: frozenset[str] | None = None
 
 
 @dataclass(slots=True)
@@ -77,12 +78,14 @@ def app_config_from_dict(raw: dict[str, Any]) -> AppConfig:
         uri = str(item.get("main_uri") or item.get("uri") or "").strip()
         if not cam_id or not uri:
             continue
+        override = camera_trigger_override(item.get("enabled_triggers"))
         cameras.append(
             CameraConfig(
                 camera_id=cam_id,
                 main_uri=uri,
                 enabled=bool(item.get("enabled", True)),
                 name=str(item.get("name") or cam_id).strip() or cam_id,
+                enabled_triggers=None if override is None else frozenset(override),
             )
         )
 
@@ -151,12 +154,14 @@ def app_config_from_settings(
         uri = str(d.get("main_uri") or "").strip()
         if not cam_id or not uri:
             continue
+        override = camera_trigger_override(d.get("enabled_triggers"))
         cam_cfgs.append(
             CameraConfig(
                 camera_id=cam_id,
                 main_uri=uri,
                 enabled=bool(d.get("enabled", True)),
                 name=str(d.get("name") or cam_id).strip() or cam_id,
+                enabled_triggers=None if override is None else frozenset(override),
             )
         )
     raw = {

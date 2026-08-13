@@ -1,4 +1,4 @@
-"""Assemble HTTP + log sinks from NodeSettings."""
+"""Assemble log + webhook-queue sinks from NodeSettings."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from app.ds.config import CameraConfig
 from app.ds.sinks import CompositeSink, LogSink
 from app.ds.sinks.async_sink import AsyncSink
 from app.ds.sinks.clip_sink import IncidentClipSink
-from app.ds.sinks.http_sink import HttpSink
+from app.ds.sinks.outbound_sink import OutboundEnqueueSink
 from app.settings import NodeSettings
 
 
@@ -22,15 +22,8 @@ def build_sink(
     sinks: list[Any] = []
     if settings.enable_log_sink:
         sinks.append(LogSink(source_video=source_video))
-    if settings.enable_http_sink and settings.triggers_url.strip():
-        sinks.append(
-            HttpSink(
-                settings.triggers_url,
-                timeout_sec=settings.triggers_timeout_sec,
-                token=settings.api_token,
-                source_video=source_video,
-            )
-        )
+    if settings.enable_http_sink:
+        sinks.append(OutboundEnqueueSink(source_video=source_video))
     if not sinks:
         sinks.append(LogSink(source_video=source_video))
     composite = CompositeSink(

@@ -8,6 +8,7 @@ from typing import Any
 
 from app.ds.clip import build_clip_from_payload
 from app.ds.config import CameraConfig
+from app.ds.payload import attach_clip, normalize_payload
 from app.minio_store import build_incident_object_key, get_minio_store
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class IncidentClipSink:
     def send(self, payload: dict[str, Any]) -> str | None:
         if self._should_clip(payload):
             self._attach_clip(payload)
+        payload.update(normalize_payload(payload))
         try:
             from app.history import record_trigger
 
@@ -123,10 +125,12 @@ class IncidentClipSink:
             return
 
         url = store.object_url(key)
-        payload["video_bucket"] = store.config.bucket
-        payload["video_key"] = key
-        if url:
-            payload["video_url"] = url
+        attach_clip(
+            payload,
+            url=url or "",
+            bucket=store.config.bucket,
+            key=key,
+        )
         logger.info(
             "incident clip uploaded camera=%s event=%s key=%s segments=%s",
             camera_id,

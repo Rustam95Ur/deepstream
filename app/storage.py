@@ -19,6 +19,7 @@ from app.models import CameraRow, LinkRow
 from app.paging import encode_cursor
 from app.schemas import CameraIn, CameraOut
 from app.settings import EnvBootstrap, NodeSettings, load_env_bootstrap
+from app.trigger_types import camera_trigger_override
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ def _camera_out(row: CameraRow) -> CameraOut:
         enabled=bool(row.enabled),
         external_id=row.external_id or "",
         meta=row.extra or {},
+        enabled_triggers=camera_trigger_override(row.enabled_triggers),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -53,17 +55,26 @@ class Store:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.settings_path = self.data_dir / "settings.json"
         self._lock = threading.RLock()
+        self._settings_mtime = 0.0
         self._settings = self._load_settings()
         self._cameras: list[CameraOut] | None = None
         self._cameras_at = 0.0
         self._sync_links(self._settings)
 
+    def _file_mtime(self) -> float:
+        try:
+            return self.settings_path.stat().st_mtime
+        except OSError:
+            return 0.0
+
     def _load_settings(self) -> NodeSettings:
         if not self.settings_path.is_file():
             s = NodeSettings()
             self._write_json(self.settings_path, s.model_dump())
+            self._settings_mtime = self._file_mtime()
             return s
         raw = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        self._settings_mtime = self._file_mtime()
         return NodeSettings.model_validate(raw or {})
 
     @staticmethod
@@ -109,8 +120,15 @@ class Store:
         except Exception:
             logger.exception("failed to sync links")
 
+    def invalidate_camera_cache(self) -> None:
+        with self._lock:
+            self._invalidate_cameras()
+
     def get_settings(self) -> NodeSettings:
         with self._lock:
+            mtime = self._file_mtime()
+            if mtime != self._settings_mtime:
+                self._settings = self._load_settings()
             return self._settings.model_copy(deep=True)
 
     def update_settings(self, patch: dict[str, Any]) -> NodeSettings:
@@ -119,6 +137,7 @@ class Store:
             data.update({k: v for k, v in patch.items() if v is not None})
             self._settings = NodeSettings.model_validate(data)
             self._persist_settings()
+            self._settings_mtime = self._file_mtime()
             self._sync_links(self._settings)
             return self._settings.model_copy(deep=True)
 
@@ -195,6 +214,7 @@ class Store:
             row.enabled = data.enabled
             row.external_id = data.external_id
             row.extra = data.meta or {}
+            row.enabled_triggers = data.enabled_triggers
             row.updated_at = now
             session.flush()
             out = _camera_out(row)
@@ -231,6 +251,8 @@ class Store:
                 row.enabled = cam.enabled
                 row.external_id = cam.external_id
                 row.extra = cam.meta or {}
+                if cam.enabled_triggers is not None or row.enabled_triggers is None:
+                    row.enabled_triggers = cam.enabled_triggers
                 row.updated_at = now
                 session.flush()
                 out.append(_camera_out(row))

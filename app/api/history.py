@@ -1,17 +1,32 @@
-"""History of triggers and outbound sends."""
+"""History of triggers, outbound sends, and webhook jobs."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, tuple_
 
 from app.api import ApiAuth
 from app.db import db_enabled, session_scope
-from app.models import SendEventRow, TriggerEventRow
+from app.ds.payload import clip_from_payload, normalize_payload
+from app.minio_store import get_minio_store
+from app.models import OutboundJobRow, SendEventRow, TriggerEventRow
 from app.paging import cursor_or_400, cursor_str, cursor_time, encode_cursor
-from app.schemas import SendEventOut, SendHistoryOut, TriggerEventOut, TriggerHistoryOut
+from app.schemas import (
+    ClipOut,
+    ClipUrlOut,
+    OutboundJobListOut,
+    OutboundJobOut,
+    ResendOut,
+    SendEventOut,
+    SendHistoryOut,
+    TriggerEventDetailOut,
+    TriggerEventOut,
+    TriggerHistoryOut,
+)
+from app.webhooks import resend_event, retry_job
 
 router = APIRouter(prefix="/api/v1/history", tags=["history"], dependencies=[ApiAuth])
 
@@ -34,6 +49,46 @@ def _after_key(cursor: str):
     if payload is None:
         return None
     return cursor_time(payload), cursor_str(payload, "id")
+
+
+def _clip_out(payload: dict[str, Any]) -> ClipOut:
+    clip = clip_from_payload(payload)
+    return ClipOut(url=clip["url"], bucket=clip["bucket"], key=clip["key"])
+
+
+def _trigger_out(row: TriggerEventRow) -> TriggerEventOut:
+    payload = dict(row.payload or {})
+    clip = _clip_out(payload)
+    return TriggerEventOut(
+        event_id=row.event_id,
+        camera_id=row.camera_id,
+        camera_name=str(payload.get("camera_name") or ""),
+        trigger_type=row.trigger_type,
+        category=row.category,
+        evidence=row.evidence or {},
+        clip=clip,
+        video_url=clip.url,
+        video_bucket=clip.bucket,
+        video_key=clip.key,
+        created_at=row.created_at,
+    )
+
+
+def _job_out(row: OutboundJobRow) -> OutboundJobOut:
+    return OutboundJobOut(
+        id=row.id,
+        event_id=row.event_id,
+        webhook_id=row.webhook_id,
+        url=row.url,
+        attempts=row.attempts,
+        max_attempts=row.max_attempts,
+        status=row.status,
+        last_error=row.last_error or "",
+        http_status=row.http_status,
+        next_attempt_at=row.next_attempt_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
 
 
 @router.get("/triggers", response_model=TriggerHistoryOut)
@@ -77,18 +132,45 @@ def list_triggers(
         if extra:
             rows = rows[:limit]
         next_cursor = encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id) if extra and rows else None
-        items = [
-            TriggerEventOut(
-                event_id=r.event_id,
-                camera_id=r.camera_id,
-                trigger_type=r.trigger_type,
-                category=r.category,
-                evidence=r.evidence or {},
-                created_at=r.created_at,
-            )
-            for r in rows
-        ]
+        items = [_trigger_out(r) for r in rows]
     return TriggerHistoryOut(items=items, next_cursor=next_cursor)
+
+
+@router.get("/triggers/{event_id}", response_model=TriggerEventDetailOut)
+def get_trigger(event_id: str) -> TriggerEventDetailOut:
+    _require_db()
+    with session_scope(write=False) as session:
+        row = session.scalar(select(TriggerEventRow).where(TriggerEventRow.event_id == event_id.strip()))
+        if row is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        base = _trigger_out(row)
+        payload = normalize_payload(dict(row.payload or {}))
+    return TriggerEventDetailOut(**base.model_dump(), payload=payload)
+
+
+@router.get("/triggers/{event_id}/clip", response_model=ClipUrlOut)
+def get_trigger_clip(event_id: str) -> ClipUrlOut:
+    _require_db()
+    with session_scope(write=False) as session:
+        row = session.scalar(select(TriggerEventRow).where(TriggerEventRow.event_id == event_id.strip()))
+        if row is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        clip = clip_from_payload(dict(row.payload or {}))
+    url = clip["url"]
+    if clip["key"]:
+        url = get_minio_store().object_url(clip["key"]) or url
+    return ClipUrlOut(event_id=event_id, url=url, bucket=clip["bucket"], key=clip["key"])
+
+
+@router.post("/triggers/{event_id}/resend", response_model=ResendOut)
+def post_trigger_resend(event_id: str) -> ResendOut:
+    _require_db()
+    with session_scope(write=False) as session:
+        row = session.scalar(select(TriggerEventRow).where(TriggerEventRow.event_id == event_id.strip()))
+        if row is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+    queued = resend_event(event_id.strip())
+    return ResendOut(event_id=event_id.strip(), queued=queued)
 
 
 @router.get("/sends", response_model=SendHistoryOut)
@@ -130,6 +212,7 @@ def list_sends(
         next_cursor = encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id) if extra and rows else None
         items = [
             SendEventOut(
+                id=r.id,
                 event_id=r.event_id,
                 sink=r.sink,
                 url=r.url,
@@ -141,3 +224,43 @@ def list_sends(
             for r in rows
         ]
     return SendHistoryOut(items=items, next_cursor=next_cursor)
+
+
+@router.get("/outbound", response_model=OutboundJobListOut)
+def list_outbound(
+    limit: int = Query(default=50, ge=1, le=500),
+    cursor: str = Query(default=""),
+    status: str = Query(default=""),
+    event_id: str = Query(default=""),
+) -> OutboundJobListOut:
+    _require_db()
+    stmt = select(OutboundJobRow)
+    st = status.strip()
+    eid = event_id.strip()
+    if st:
+        stmt = stmt.where(OutboundJobRow.status == st)
+    if eid:
+        stmt = stmt.where(OutboundJobRow.event_id.ilike(f"%{eid}%"))
+    key = _after_key(cursor)
+    if key is not None:
+        stmt = stmt.where(tuple_(OutboundJobRow.updated_at, OutboundJobRow.id) < key)
+    stmt = stmt.order_by(OutboundJobRow.updated_at.desc(), OutboundJobRow.id.desc()).limit(limit + 1)
+    with session_scope(write=False) as session:
+        rows = list(session.scalars(stmt).all())
+        extra = len(rows) > limit
+        if extra:
+            rows = rows[:limit]
+        next_cursor = (
+            encode_cursor(t=rows[-1].updated_at.isoformat(), id=rows[-1].id) if extra and rows else None
+        )
+        items = [_job_out(r) for r in rows]
+    return OutboundJobListOut(items=items, next_cursor=next_cursor)
+
+
+@router.post("/outbound/{job_id}/retry", response_model=OutboundJobOut)
+def post_outbound_retry(job_id: str) -> OutboundJobOut:
+    _require_db()
+    row = retry_job(job_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return _job_out(row)

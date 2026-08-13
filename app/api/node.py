@@ -6,11 +6,11 @@ from fastapi import APIRouter, Body
 
 from app import __version__
 from app.api import ApiAuth
-from app.schemas import HealthOut, WorkerStatusOut
+from app.schemas import HealthOut, VideoHealthOut, WorkerStatusOut
 from app.settings import NodeSettings
-from app.ds.ring_buffer import get_ring_buffer
 from app.storage import get_store
-from app.worker import get_manager, pipeline_available
+from app.video_client import notify_reload, video_health, worker_start, worker_status, worker_stop
+from app.webhooks import list_enabled_webhooks
 from app.worker.cameras_poller import get_poller
 
 router = APIRouter(prefix="/api/v1", tags=["node"])
@@ -21,8 +21,12 @@ def health() -> HealthOut:
     store = get_store()
     settings = store.get_settings()
     cams = store.list_cameras()
-    st = get_manager().status()
-    ok, detail = pipeline_available()
+    st = worker_status()
+    try:
+        hooks = list_enabled_webhooks()
+        triggers_url = hooks[0].url if hooks else settings.triggers_url
+    except Exception:
+        triggers_url = settings.triggers_url
     return HealthOut(
         status="ok",
         node_id=settings.node_id,
@@ -31,9 +35,9 @@ def health() -> HealthOut:
         cameras_count=len(cams),
         cameras_enabled=sum(1 for c in cams if c.enabled),
         pipeline_running=st.running,
-        pipeline_available=ok,
-        pipeline_detail=detail,
-        triggers_url=settings.triggers_url,
+        pipeline_available=st.available,
+        pipeline_detail=st.detail,
+        triggers_url=triggers_url,
         cameras_url=settings.cameras_url,
     )
 
@@ -46,39 +50,40 @@ def get_settings() -> NodeSettings:
 @router.put("/settings", response_model=NodeSettings, dependencies=[ApiAuth])
 def put_settings(body: NodeSettings) -> NodeSettings:
     updated = get_store().update_settings(body.model_dump())
-    get_manager().request_reload()
-    get_ring_buffer().request_refresh()
+    notify_reload()
     return updated
 
 
 @router.patch("/settings", response_model=NodeSettings, dependencies=[ApiAuth])
 def patch_settings(body: dict = Body(...)) -> NodeSettings:
     updated = get_store().update_settings(body)
-    get_manager().request_reload()
-    get_ring_buffer().request_refresh()
+    notify_reload()
     return updated
 
 
 @router.get("/worker", response_model=WorkerStatusOut, dependencies=[ApiAuth])
-def worker_status() -> WorkerStatusOut:
-    return get_manager().status()
+def get_worker_status() -> WorkerStatusOut:
+    return worker_status()
+
+
+@router.get("/video/health", response_model=VideoHealthOut, dependencies=[ApiAuth])
+def get_video_health() -> VideoHealthOut:
+    return video_health()
 
 
 @router.post("/worker/start", response_model=WorkerStatusOut, dependencies=[ApiAuth])
-def worker_start() -> WorkerStatusOut:
-    return get_manager().start()
+def post_worker_start() -> WorkerStatusOut:
+    return worker_start()
 
 
 @router.post("/worker/stop", response_model=WorkerStatusOut, dependencies=[ApiAuth])
-def worker_stop() -> WorkerStatusOut:
-    return get_manager().stop()
+def post_worker_stop() -> WorkerStatusOut:
+    return worker_stop()
 
 
 @router.post("/worker/reload", response_model=WorkerStatusOut, dependencies=[ApiAuth])
-def worker_reload() -> WorkerStatusOut:
-    get_manager().request_reload()
-    get_ring_buffer().request_refresh()
-    return get_manager().status()
+def post_worker_reload() -> WorkerStatusOut:
+    return notify_reload() or worker_status()
 
 
 @router.post("/cameras-pull", dependencies=[ApiAuth])

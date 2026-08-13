@@ -78,9 +78,16 @@ class TriggerEngine:
         self.app_cfg = app_cfg
         self.trigger: TriggerConfig = app_cfg.trigger
         self.sink = sink
+        self._cams = {c.camera_id: c for c in cameras}
         self.by_pad: dict[int, CameraTriggerState] = {}
         for idx, cam in enumerate(cameras):
             self.by_pad[idx] = CameraTriggerState(camera_id=cam.camera_id)
+
+    def _allows(self, camera_id: str, kind: str) -> bool:
+        cam = self._cams.get(camera_id)
+        if cam is not None and cam.enabled_triggers is not None:
+            return kind in cam.enabled_triggers
+        return self.trigger.allows(kind)
 
     def note_frame(self, pad_index: int, video_s: float | None = None) -> None:
         st = self.by_pad.get(pad_index)
@@ -91,11 +98,11 @@ class TriggerEngine:
                 st.last_video_s = float(video_s)
 
     def check_stream_silent(self) -> None:
-        if not self.trigger.allows("stream_silent"):
-            return
         now = time.monotonic()
         silent_s = self.app_cfg.pipeline.stream_silent_s
         for st in self.by_pad.values():
+            if not self._allows(st.camera_id, "stream_silent"):
+                continue
             if not st.saw_frame:
                 continue
             if now - st.last_frame_ts < silent_s:
@@ -118,11 +125,11 @@ class TriggerEngine:
         st.last_frame_ts = now
         st.saw_frame = True
         people = [d for d in detections if d.h > 0 and d.w > 0]
-        if self.trigger.allows("presence"):
+        if self._allows(st.camera_id, "presence"):
             self._eval_presence(st, people, now)
-        if self.trigger.allows("convergence"):
+        if self._allows(st.camera_id, "convergence"):
             self._eval_convergence(st, people, now)
-        if self.trigger.allows("vif"):
+        if self._allows(st.camera_id, "vif"):
             self._eval_vif(st, people, now)
         st.prev_centers = {d.track_id: (d.cx, d.cy, now) for d in people}
 
@@ -222,8 +229,10 @@ class TriggerEngine:
         category: str = "incident",
     ) -> None:
         now = time.monotonic()
+        cam = self._cams.get(st.camera_id)
         payload = build_payload(
             camera_id=st.camera_id,
+            camera_name=(cam.name if cam else "") or st.camera_id,
             trigger_type=trigger_type,
             pre_s=self.app_cfg.record.clip_pre_s,
             post_s=self.app_cfg.record.clip_post_s,

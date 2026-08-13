@@ -11,7 +11,7 @@ from typing import Any
 
 from app.schemas import CameraIn
 from app.storage import Store, get_store
-from app.worker import get_manager
+from app.video_client import notify_reload
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +40,9 @@ def _parse_cameras_payload(data: Any) -> list[CameraIn]:
                 external_id=str(item.get("external_id") or ""),
                 meta={k: v for k, v in item.items() if k not in {
                     "id", "camera_id", "name", "main_uri", "uri", "rtsp_url",
-                    "enabled", "external_id",
+                    "enabled", "external_id", "enabled_triggers",
                 }},
+                enabled_triggers=item.get("enabled_triggers") if "enabled_triggers" in item else None,
             )
         )
     return out
@@ -88,10 +89,7 @@ class CamerasPoller:
         self.store.replace_cameras(cams)
         after = {c.id for c in cams}
         if before != after:
-            get_manager().request_reload()
-            from app.ds.ring_buffer import get_ring_buffer
-
-            get_ring_buffer().request_refresh()
+            notify_reload()
         logger.info("Pulled %s cameras from %s", len(cams), url)
         return len(cams)
 

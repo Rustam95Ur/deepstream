@@ -17,7 +17,16 @@ const form = reactive({
   name: "",
   main_uri: "",
   enabled: true,
+  inheritTriggers: true,
+  enabled_triggers: ["presence", "convergence", "vif", "stream_silent"] as string[],
 });
+
+const TRIGGER_OPTIONS = [
+  { id: "presence", label: "Присутствие" },
+  { id: "convergence", label: "Схождение" },
+  { id: "vif", label: "VIF" },
+  { id: "stream_silent", label: "Тишина потока" },
+] as const;
 
 onMounted(async () => {
   if (isNew.value) return;
@@ -40,7 +49,24 @@ onMounted(async () => {
   form.name = cam.name;
   form.main_uri = cam.main_uri;
   form.enabled = cam.enabled;
+  form.inheritTriggers = cam.enabled_triggers == null;
+  form.enabled_triggers = cam.enabled_triggers ?? TRIGGER_OPTIONS.map((t) => t.id);
 });
+
+function isOn(id: string) {
+  return form.enabled_triggers.includes(id);
+}
+
+function setOn(id: string, on: boolean) {
+  const next = new Set(form.enabled_triggers);
+  if (on) next.add(id);
+  else next.delete(id);
+  form.enabled_triggers = TRIGGER_OPTIONS.map((t) => t.id).filter((item) => next.has(item));
+}
+
+function selectedTriggers() {
+  return form.inheritTriggers ? null : form.enabled_triggers;
+}
 
 async function onSubmit() {
   const uri = form.main_uri.trim();
@@ -53,6 +79,7 @@ async function onSubmit() {
         name: form.name.trim() || id,
         main_uri: uri,
         enabled: form.enabled,
+        enabled_triggers: selectedTriggers(),
       });
       flash("Камера сохранена");
     } else {
@@ -63,6 +90,7 @@ async function onSubmit() {
         name: form.name.trim() || cam.id,
         main_uri: uri,
         enabled: form.enabled,
+        enabled_triggers: selectedTriggers(),
       });
       flash("Камера обновлена");
     }
@@ -94,6 +122,19 @@ async function onSubmit() {
       <Field id="cam-uri" v-model="form.main_uri" class="span-2" label="Адрес потока" addon="rtsp://" required />
       <div class="span-2 switch-cell">
         <SwitchField id="cam-enabled" v-model="form.enabled" label="Включена" />
+      </div>
+      <div class="span-2 switch-cell">
+        <SwitchField id="cam-inherit" v-model="form.inheritTriggers" label="Типы событий — как у ноды" />
+      </div>
+      <div v-if="!form.inheritTriggers" class="span-2 trigger-list">
+        <div v-for="opt in TRIGGER_OPTIONS" :key="opt.id" class="trigger-row">
+          <SwitchField
+            :id="`cam-trig-${opt.id}`"
+            :model-value="isOn(opt.id)"
+            :label="opt.label"
+            @update:model-value="(v) => setOn(opt.id, v)"
+          />
+        </div>
       </div>
     </div>
     <div class="card-foot end">

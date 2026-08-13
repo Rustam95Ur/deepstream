@@ -28,3 +28,10 @@ def normalize_enabled_triggers(value: object) -> list[str]:
             seen.add(name)
             out.append(name)
     return out
+
+
+def camera_trigger_override(value: object) -> list[str] | None:
+    """None = inherit node settings. List (possibly empty) = explicit set."""
+    if value is None:
+        return None
+    return normalize_enabled_triggers(value)

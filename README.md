@@ -7,9 +7,11 @@ One Django Campus can attach multiple nodes (different GPUs / machines).
 
 - Local camera registry (`GET/POST/DELETE /api/v1/cameras`) — Django imports like SmartBox
 - Settings UI at `/` (Vue SPA behind nginx in Docker)
-- Trigger sink: HTTP POST to `triggers_url` after cutting an incident clip from the RTSP ring-buffer (same as Campus `rtsp_writer`) and uploading it to MinIO (`video_url` in the payload). Enable or disable `presence`, `convergence`, `vif`, `stream_silent` in settings (`enabled_triggers`).
+- Multiple signed webhooks: HMAC, retries, dead-letter queue, resend from history
+- Incident clip from the RTSP ring-buffer (Campus `rtsp_writer` path) uploaded to MinIO; payload always has `event_id`, `clip`, `video_url`
+- Per-camera enable/disable of `presence`, `convergence`, `vif`, `stream_silent` (or inherit node settings)
 - Optional pull from `cameras_url` on an interval
-- Pipeline runs in a background thread when `pyservicemaker` is available
+- Pipeline runs in a separate GPU process when `pyservicemaker` is available
 
 ## Quick start (API only, no GPU)
 
@@ -21,9 +23,13 @@ $env:NEXUS_DS_DATA_DIR="./data"
 poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-Open http://127.0.0.1:8080 — add cameras, set `triggers_url`.
+Open http://127.0.0.1:8080 — add cameras and webhooks.
 
-Pipeline stays idle without DeepStream (`pyservicemaker`); API/UI still work.
+Pipeline stays idle without DeepStream (`pyservicemaker`); API/UI still work. GPU pipeline + ring-buffer run in a separate process:
+
+```bash
+poetry run python -m app.video
+```
 
 ## Frontend (Vue)
 
@@ -59,21 +65,23 @@ First boot prepares YOLO11n (`models/yolo11n/prepare.sh`: download weights, expo
 
 nginx (UI + `/api` proxy): http://127.0.0.1:8080
 
-Requires NVIDIA Container Toolkit (`gpus: all`). The DeepStream API container is internal; nginx is the public entry.
+Requires NVIDIA Container Toolkit (`gpus: all` on **video**). nginx is the public entry; the API and video containers are internal.
 
-Postgres stores cameras, users, integration URLs (`cameras_url` / `triggers_url`), trigger history, and outbound send history. Schema is applied with Alembic on API startup. `NEXUS_DS_DATABASE_URL` is required. There is no `cameras.json`.
+Postgres stores cameras, users, webhooks, trigger history, and the outbound job queue. Schema is applied with Alembic on **API** startup. `NEXUS_DS_DATABASE_URL` is required. There is no `cameras.json`.
 
 ## Production stack
 
-Compose runs five services: **Postgres 16** (tuned WAL/buffers) → **PgBouncer** (transaction pool) → **MinIO** (incident clips) → **API** (one uvicorn worker, GPU pipeline in-process) → **nginx** (SPA + keep-alive reverse proxy).
+Compose runs: **Postgres 16** → **PgBouncer** → **MinIO** → **API** (slim Python image, FastAPI) → **video** (DeepStream + rtsp_writer ring-buffer, GPU) → **nginx** (SPA + reverse proxy).
 
-The API talks to Postgres through PgBouncer (internal `:5432` on the `pgbouncer` service). Migrations use `NEXUS_DS_DATABASE_MIGRATE_URL` straight to the `postgres` service (DDL is not safe in transaction pooling).
+The API talks to Postgres through PgBouncer. Migrations use `NEXUS_DS_DATABASE_MIGRATE_URL` straight to `postgres` (DDL is not safe in transaction pooling).
 
-Keep **one** uvicorn worker. The DeepStream pipeline lives in that process; extra workers would start extra GPU pipelines.
+Keep **one** worker in the video container. The DeepStream pipeline lives in that process; extra workers would start extra GPU pipelines.
+
+API and video share `/data/nexus_deepstream` (settings.json + ring-buffer segments). The API notifies video at `NEXUS_DS_VIDEO_URL` when cameras/settings change. Internal video control (`:8081`) requires `NEXUS_DS_VIDEO_TOKEN` (`Authorization: Bearer …`). `/health` on `:8081` stays open for liveness.
 
 Hot path (probe thread) never waits on the network or the database:
 
-- Trigger HTTP goes to an in-memory queue and 4 worker threads (`NEXUS_DS_SINK_WORKERS`). HTTP uses keep-alive. If the queue is full, the event is dropped and logged.
+- Clip work and webhook enqueue go to an in-memory queue (`NEXUS_DS_SINK_WORKERS`). Delivery is a Postgres job queue with HMAC, backoff, and a dead-letter status.
 - History inserts are batched (`NEXUS_DS_HISTORY_BATCH` / `NEXUS_DS_HISTORY_FLUSH_MS`) on a background writer. Reads do not commit.
 - Camera list is cached (`NEXUS_DS_CAMERA_CACHE_MS`) and invalidated on write.
 
@@ -85,9 +93,12 @@ See `.env.example` for pool, queue, and cache knobs.
 |--------|------|---------|
 | GET | `/api/v1/health` | node status |
 | GET | `/api/v1/cameras` | list cameras (`q`, `enabled`, `since`, `until`, `cursor`, `limit`; omit `limit` for the full list) |
-| POST | `/api/v1/cameras` | upsert camera `{id, name, main_uri, enabled}` |
+| POST | `/api/v1/cameras` | upsert camera `{id, name, main_uri, enabled, enabled_triggers?}` (`null` = inherit node types) |
 | DELETE | `/api/v1/cameras/{id}` | remove |
 | GET/PUT | `/api/v1/settings` | node settings |
+| GET | `/api/v1/video/health` | GPU pipeline + per-camera ring-buffer health |
+| GET/POST | `/api/v1/webhooks` | webhook list / create `{name, url, enabled, hmac_secret, timeout_sec, max_retries}` |
+| PUT/DELETE | `/api/v1/webhooks/{id}` | update / remove webhook |
 | POST | `/api/v1/cameras-pull` | pull from `cameras_url` |
 | GET | `/api/v1/auth/session` | UI session status |
 | POST | `/api/v1/auth/login` | UI session cookie (`email` + `password`; first user also sends `password_confirm`) |
@@ -95,20 +106,26 @@ See `.env.example` for pool, queue, and cache knobs.
 | GET | `/api/v1/users` | list console users (`q`, `since`, `until`, `cursor`, `limit`) |
 | POST | `/api/v1/users` | create user `{email, password, name}` |
 | DELETE | `/api/v1/users/{id}` | remove user |
-| GET | `/api/v1/history/triggers` | trigger history page `{items, next_cursor}` (`since`, `until`, `camera_id`, `trigger_type`, `category`, `event_id`, `cursor`, `limit`) |
-| GET | `/api/v1/history/sends` | HTTP send history page `{items, next_cursor}` (`since`, `until`, `status`, `event_id`, `sink`, `cursor`, `limit`) |
+| GET | `/api/v1/history/triggers` | trigger history page `{items, next_cursor}` |
+| GET | `/api/v1/history/triggers/{event_id}` | one event + full payload |
+| GET | `/api/v1/history/triggers/{event_id}/clip` | refresh MinIO presign |
+| POST | `/api/v1/history/triggers/{event_id}/resend` | enqueue payload to all enabled webhooks |
+| GET | `/api/v1/history/sends` | HTTP attempt history |
+| GET | `/api/v1/history/outbound` | webhook job queue (`status=dead` for failures) |
+| POST | `/api/v1/history/outbound/{id}/retry` | reset a job and send again |
 
 If `api_token` is set in settings, send `Authorization: Bearer <token>` for machine access. The Vue UI logs in with email/password and uses an httpOnly cookie. The first visit with an empty `users` table creates the initial operator.
 
-### Trigger payload (POST to `triggers_url`)
+### Trigger payload (POST to each webhook)
 
-Compatible with Campus DeepStream contract:
+Stable contract. `clip` and `video_url` are always present (empty strings if there is no file, e.g. `stream_silent`):
 
 ```json
 {
   "event_id": "...",
   "category": "incident",
   "camera_id": "cam_xxx",
+  "camera_name": "Gate",
   "trigger_type": "presence|convergence|vif|stream_silent",
   "trigger_time": "ISO-8601",
   "pre_s": 5,
@@ -116,18 +133,31 @@ Compatible with Campus DeepStream contract:
   "evidence": {},
   "node_id": "ds-1",
   "model_versions": {"detector": "yolo11n", "first_line": "nexus_deepstream"},
-  "video_url": "http://minio:9000/incidents/incidents/ingest/...?X-Amz-...",
+  "clip": {
+    "url": "http://127.0.0.1:9200/incidents/incidents/ingest/...?X-Amz-...",
+    "bucket": "incidents",
+    "key": "incidents/ingest/<date>/<camera>/<hour>/<event_id>.mp4"
+  },
+  "video_url": "http://127.0.0.1:9200/incidents/incidents/ingest/...?X-Amz-...",
   "video_bucket": "incidents",
   "video_key": "incidents/ingest/<date>/<camera>/<hour>/<event_id>.mp4"
 }
 ```
 
-On an incident trigger the node waits `post_s` (like Campus `rtsp_writer`), concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads the MP4 to MinIO, then POSTs. `stream_silent` skips the clip. The ring-buffer (`gst-launch` + `splitmuxsink`, ~3s segments) runs 24/7 for enabled RTSP cameras.
+If the webhook has an HMAC secret, the node signs the raw body:
+
+- `X-Nexus-Signature: sha256=<hex>`
+- `X-Nexus-Timestamp: <unix seconds>`
+- `X-Nexus-Event-Id: <event_id>`
+
+Verify with `HMAC-SHA256(secret, timestamp + "." + body)`. Failed deliveries retry with backoff, then sit in the dead-letter queue until resend from history.
+
+On an incident trigger the node waits `post_s`, concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads the MP4 to MinIO, then enqueues POSTs. `stream_silent` skips the clip. The ring-buffer (`gst-launch` + `splitmuxsink`, ~3s segments) runs 24/7 for enabled RTSP cameras.
 
 ## Multi-node with one Django
 
 1. Deploy node A (`node_id=ds-1`) and node B (`node_id=ds-2`).
-2. On each node set `triggers_url` → same Campus ingest endpoint.
+2. On each node add a webhook → same Campus ingest endpoint (optional HMAC secret).
 3. Add cameras per node (UI/API) **or** set `cameras_url` filtered by `node_id`.
 4. Later in Campus: model `DeepStreamNode` + import cameras (create/update) + reject if camera already on another node.
 

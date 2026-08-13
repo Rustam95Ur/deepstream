@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import db_enabled, session_scope
+from app.ds.payload import normalize_payload
 from app.models import SendEventRow, TriggerEventRow
 
 logger = logging.getLogger(__name__)
@@ -30,20 +31,8 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _slim_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    out: dict[str, Any] = {
-        "event_id": payload.get("event_id"),
-        "camera_id": payload.get("camera_id"),
-        "trigger_type": payload.get("trigger_type"),
-        "category": payload.get("category"),
-        "trigger_time": payload.get("trigger_time"),
-        "node_id": payload.get("node_id"),
-        "evidence": payload.get("evidence") or {},
-    }
-    for key in ("video_url", "video_key", "video_bucket", "source_video"):
-        if payload.get(key):
-            out[key] = payload[key]
-    return out
+def _history_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return normalize_payload(payload)
 
 
 class HistoryWriter:
@@ -144,7 +133,7 @@ def record_trigger(payload: dict[str, Any]) -> None:
             "trigger_type": str(payload.get("trigger_type") or ""),
             "category": str(payload.get("category") or "incident"),
             "evidence": payload.get("evidence") or {},
-            "payload": _slim_payload(payload),
+            "payload": _history_payload(payload),
         },
     )
 

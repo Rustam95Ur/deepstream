@@ -51,6 +51,7 @@ export interface Camera {
   enabled: boolean;
   external_id: string;
   meta: Record<string, unknown>;
+  enabled_triggers: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -108,6 +109,7 @@ export interface HistoryPage<T> {
 }
 
 export interface SendEvent {
+  id: string;
   event_id: string;
   sink: string;
   url: string;
@@ -115,6 +117,81 @@ export interface SendEvent {
   http_status: number | null;
   error: string;
   created_at: string;
+}
+
+export interface Clip {
+  url: string;
+  bucket: string;
+  key: string;
+}
+
+export interface TriggerEvent {
+  event_id: string;
+  camera_id: string;
+  camera_name: string;
+  trigger_type: string;
+  category: string;
+  evidence: Record<string, unknown>;
+  clip: Clip;
+  video_url: string;
+  video_bucket: string;
+  video_key: string;
+  created_at: string;
+}
+
+export interface Webhook {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  hmac_configured: boolean;
+  timeout_sec: number;
+  max_retries: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookIn {
+  name: string;
+  url: string;
+  enabled: boolean;
+  hmac_secret?: string | null;
+  timeout_sec: number;
+  max_retries: number;
+}
+
+export interface OutboundJob {
+  id: string;
+  event_id: string;
+  webhook_id: string;
+  url: string;
+  attempts: number;
+  max_attempts: number;
+  status: string;
+  last_error: string;
+  http_status: number | null;
+  next_attempt_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RingCameraHealth {
+  camera_id: string;
+  name: string;
+  alive: boolean;
+  stalled: boolean;
+  last_segment_age_s: number | null;
+  restarts: number;
+  codec: string;
+}
+
+export interface VideoHealth {
+  status: string;
+  gst_available: boolean;
+  clip_record: boolean;
+  ring_running: boolean;
+  pipeline: WorkerStatus;
+  cameras: RingCameraHealth[];
 }
 
 export interface HistoryQuery {
@@ -128,13 +205,4 @@ export interface HistoryQuery {
   sink?: string;
   limit?: number;
   cursor?: string;
-}
-
-export interface TriggerEvent {
-  event_id: string;
-  camera_id: string;
-  trigger_type: string;
-  category: string;
-  evidence: Record<string, unknown>;
-  created_at: string;
 }
