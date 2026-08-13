@@ -78,11 +78,18 @@ function wait(ms: number) {
 
 export async function startWorker() {
   store.workerBusy = true;
+  store.error = "";
   try {
     store.worker = await api.workerStart();
     await wait(400);
     await refreshWorker();
-    flash(store.worker?.running ? "Pipeline запущен" : "Pipeline не запустился");
+    if (store.worker?.running) {
+      flash("Pipeline запущен");
+      return;
+    }
+    store.error = store.worker?.last_error || store.worker?.detail || "Pipeline не запустился";
+  } catch (err) {
+    store.error = err instanceof ApiError ? err.message : "Не удалось запустить";
   } finally {
     store.workerBusy = false;
   }
@@ -90,12 +97,23 @@ export async function startWorker() {
 
 export async function stopWorker() {
   store.workerBusy = true;
+  store.error = "";
   try {
     store.worker = await api.workerStop();
     await wait(300);
     await refreshWorker();
-    flash(store.worker?.running ? "Остановка не завершилась" : "Pipeline остановлен");
+    if (!store.worker?.running) {
+      flash("Pipeline остановлен");
+      return;
+    }
+    store.error = store.worker?.last_error || "Остановка не завершилась";
+  } catch (err) {
+    store.error = err instanceof ApiError ? err.message : "Не удалось остановить";
   } finally {
     store.workerBusy = false;
   }
+}
+
+export function clearError() {
+  store.error = "";
 }

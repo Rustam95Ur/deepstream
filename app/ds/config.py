@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from app.trigger_types import TRIGGER_TYPES, normalize_enabled_triggers
 
 
 @dataclass(slots=True)
@@ -21,6 +20,7 @@ class CameraConfig:
 @dataclass(slots=True)
 class TriggerConfig:
     mode: str = "convergence"
+    enabled: frozenset[str] = field(default_factory=lambda: frozenset(TRIGGER_TYPES))
     min_tracks: int = 2
     converge_dist_bh: float = 1.5
     speed_thresh_bh: float = 2.0
@@ -30,6 +30,9 @@ class TriggerConfig:
     presence_sustain_s: float = 2.0
     vif_iou_thresh: float = 0.25
     vif_sustain_s: float = 0.3
+
+    def allows(self, kind: str) -> bool:
+        return kind in self.enabled
 
 
 @dataclass(slots=True)
@@ -87,6 +90,7 @@ def app_config_from_dict(raw: dict[str, Any]) -> AppConfig:
 
     trigger = TriggerConfig(
         mode=str(trig_raw.get("mode") or "convergence"),
+        enabled=frozenset(normalize_enabled_triggers(trig_raw.get("enabled"))),
         min_tracks=int(trig_raw.get("min_tracks") or 2),
         converge_dist_bh=float(trig_raw.get("converge_dist_bh") or 1.5),
         speed_thresh_bh=float(trig_raw.get("speed_thresh_bh") or 2.0),
@@ -157,6 +161,7 @@ def app_config_from_settings(
         "cameras": [],
         "trigger": {
             "mode": settings.trigger_mode,
+            "enabled": list(settings.enabled_triggers),
             "min_tracks": settings.min_tracks,
             "converge_dist_bh": settings.converge_dist_bh,
             "speed_thresh_bh": settings.speed_thresh_bh,

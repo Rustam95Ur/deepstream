@@ -31,7 +31,7 @@ import { enabledCount, store } from "../store";
         </div>
         <div class="card-foot">
           <span>{{ store.worker.detail || "Нет статуса" }}</span>
-          <span v-if="store.worker.last_error && store.worker.last_error !== store.worker.detail" class="muted">
+          <span v-if="store.worker.last_error && store.worker.last_error !== store.worker.detail" class="field-error">
             {{ store.worker.last_error }}
           </span>
         </div>

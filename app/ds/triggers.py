@@ -91,6 +91,8 @@ class TriggerEngine:
                 st.last_video_s = float(video_s)
 
     def check_stream_silent(self) -> None:
+        if not self.trigger.allows("stream_silent"):
+            return
         now = time.monotonic()
         silent_s = self.app_cfg.pipeline.stream_silent_s
         for st in self.by_pad.values():
@@ -116,9 +118,12 @@ class TriggerEngine:
         st.last_frame_ts = now
         st.saw_frame = True
         people = [d for d in detections if d.h > 0 and d.w > 0]
-        self._eval_presence(st, people, now)
-        self._eval_convergence(st, people, now)
-        self._eval_vif(st, people, now)
+        if self.trigger.allows("presence"):
+            self._eval_presence(st, people, now)
+        if self.trigger.allows("convergence"):
+            self._eval_convergence(st, people, now)
+        if self.trigger.allows("vif"):
+            self._eval_vif(st, people, now)
         st.prev_centers = {d.track_id: (d.cx, d.cy, now) for d in people}
 
     def _eval_presence(

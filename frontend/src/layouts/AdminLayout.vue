@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ApiError, api } from "../api";
 import Logo from "../components/Logo.vue";
-import { loadConsole, startWorker, stopWorker, store } from "../store";
+import { clearError, loadConsole, startWorker, stopWorker, store } from "../store";
 
 const route = useRoute();
 const router = useRouter();
@@ -17,7 +17,7 @@ const titles: Record<string, { title: string; desc: string }> = {
   "camera-edit": { title: "Изменить камеру", desc: "Параметры потока" },
   settings: { title: "Настройки", desc: "Идентификация и лимиты" },
   ingest: { title: "Связь", desc: "HTTP-отправка событий" },
-  triggers: { title: "Триггеры", desc: "Пороги детекции" },
+  triggers: { title: "Триггеры", desc: "Какие события слать и пороги" },
   history: { title: "История", desc: "Сработки и отправки" },
   users: { title: "Пользователи", desc: "Доступ в консоль по email" },
   "user-new": { title: "Новый пользователь", desc: "Email и пароль для входа" },
@@ -25,6 +25,9 @@ const titles: Record<string, { title: string; desc: string }> = {
 };
 
 const page = computed(() => titles[String(route.name)] || titles.overview);
+const bannerError = computed(() => store.error || store.worker?.last_error || "");
+
+let workerTimer: ReturnType<typeof setInterval> | null = null;
 
 const nav = [
   { name: "overview", label: "Обзор", icon: "home" },
@@ -45,10 +48,20 @@ onMounted(async () => {
       await router.push({ name: "login" });
     }
   }
+  workerTimer = setInterval(() => {
+    if (!store.loaded) return;
+    void api.worker().then((w) => {
+      store.worker = w;
+    }).catch(() => undefined);
+  }, 8000);
 });
 
 onUnmounted(() => {
   document.removeEventListener("click", onDocClick);
+  if (workerTimer) {
+    clearInterval(workerTimer);
+    workerTimer = null;
+  }
 });
 
 function onDocClick() {
@@ -77,19 +90,11 @@ function isNavActive(name: string) {
 }
 
 async function onStart() {
-  try {
-    await startWorker();
-  } catch (err) {
-    store.error = err instanceof ApiError ? err.message : "Не удалось запустить";
-  }
+  await startWorker();
 }
 
 async function onStop() {
-  try {
-    await stopWorker();
-  } catch (err) {
-    store.error = err instanceof ApiError ? err.message : "Не удалось остановить";
-  }
+  await stopWorker();
 }
 </script>
 
@@ -208,7 +213,16 @@ async function onStop() {
 
       <main class="app-content">
         <p v-if="store.message" class="alert" role="status">{{ store.message }}</p>
-        <p v-if="store.error" class="alert err-banner" role="alert">{{ store.error }}</p>
+        <p v-if="bannerError" class="alert err-banner" role="alert">
+          <span>{{ bannerError }}</span>
+          <button
+            v-if="store.error"
+            type="button"
+            class="alert-close"
+            aria-label="Закрыть"
+            @click="clearError"
+          >×</button>
+        </p>
         <router-view v-if="store.loaded" />
         <div v-else class="stats">
           <div class="card skeleton"></div>

@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.api.auth import router as auth_router
 from app.api.cameras import router as cameras_router
+from app.api.errors import register_error_handlers
 from app.api.history import router as history_router
 from app.api.node import router as node_router
 from app.api.users import router as users_router
@@ -66,6 +67,7 @@ app.include_router(cameras_router)
 app.include_router(users_router)
 app.include_router(history_router)
 app.include_router(web_router)
+register_error_handlers(app)
 
 
 def main() -> None:

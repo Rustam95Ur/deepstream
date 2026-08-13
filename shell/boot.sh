@@ -24,11 +24,20 @@ else
   exit 127
 fi
 
+ONNX="${DEEPSTREAM_YOLO_DIR}/yolo11n.onnx"
+CUSTOM_LIB="${DEEPSTREAM_YOLO_DIR}/nvdsinfer_custom_impl_Yolo/libnvdsinfer_custom_impl_Yolo.so"
 PREPARE="${DEEPSTREAM_YOLO_DIR}/prepare.sh"
-if [ -f "${PREPARE}" ]; then
-  tr -d '\r' < "${PREPARE}" > /tmp/yolo11n-prepare.sh
-  chmod +x /tmp/yolo11n-prepare.sh
-  /bin/bash /tmp/yolo11n-prepare.sh || true
+if [ ! -f "${ONNX}" ] || [ ! -f "${CUSTOM_LIB}" ]; then
+  if [ -f "${PREPARE}" ]; then
+    echo "YOLO11n artifacts missing; running prepare.sh (first run can take several minutes)"
+    tr -d '\r' < "${PREPARE}" > /tmp/yolo11n-prepare.sh
+    chmod +x /tmp/yolo11n-prepare.sh
+    if ! /bin/bash /tmp/yolo11n-prepare.sh; then
+      echo "ERROR: YOLO prepare failed. Pipeline will idle until ${ONNX} and the custom parser exist."
+    fi
+  else
+    echo "ERROR: YOLO11n ONNX missing: ${ONNX}. Run models/yolo11n/prepare.sh"
+  fi
 fi
 
 for eng in /opt/nvidia/deepstream/deepstream-9.0/model_b*_gpu0_fp16.engine; do

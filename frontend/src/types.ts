@@ -19,6 +19,7 @@ export interface NodeSettings {
   enable_http_sink: boolean;
   enable_log_sink: boolean;
   trigger_mode: string;
+  enabled_triggers: string[];
   min_tracks: number;
   converge_dist_bh: number;
   speed_thresh_bh: number;

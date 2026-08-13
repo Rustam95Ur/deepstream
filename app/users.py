@@ -97,11 +97,11 @@ def list_users(
         stmt = stmt.limit(limit + 1)
     with session_scope(write=False) as session:
         rows = list(session.scalars(stmt).all())
-    extra = limit is not None and len(rows) > limit
-    if extra:
-        rows = rows[:limit]
-    next_cursor = encode_cursor(k=rows[-1].email, id=rows[-1].id) if extra and rows else None
-    return [_record(r) for r in rows], next_cursor
+        extra = limit is not None and len(rows) > limit
+        if extra:
+            rows = rows[:limit]
+        next_cursor = encode_cursor(k=rows[-1].email, id=rows[-1].id) if extra and rows else None
+        return [_record(r) for r in rows], next_cursor
 
 
 def create_user(email: str, password: str, name: str = "") -> UserRecord:

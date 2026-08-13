@@ -17,6 +17,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/nexus_deepstream
 
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      git wget ca-certificates build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml poetry.lock /opt/nexus_deepstream/
 RUN (python3 -m pip install --quiet --disable-pip-version-check --break-system-packages \
       "poetry==${POETRY_VERSION}" \

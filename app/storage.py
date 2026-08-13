@@ -170,11 +170,11 @@ class Store:
             stmt = stmt.limit(limit + 1)
         with session_scope(write=False) as session:
             rows = list(session.scalars(stmt).all())
-        extra = limit is not None and len(rows) > limit
-        if extra:
-            rows = rows[:limit]
-        out = [_camera_out(r) for r in rows]
-        next_cursor = encode_cursor(id=rows[-1].id) if extra and rows else None
+            extra = limit is not None and len(rows) > limit
+            if extra:
+                rows = rows[:limit]
+            out = [_camera_out(r) for r in rows]
+            next_cursor = encode_cursor(id=rows[-1].id) if extra and rows else None
         return out, next_cursor
 
     def get_camera(self, camera_id: str) -> CameraOut | None:

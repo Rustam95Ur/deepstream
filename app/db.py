@@ -141,6 +141,8 @@ def session_scope(*, write: bool = False) -> Iterator[Session]:
         if write:
             session.commit()
         else:
+            # Rollback expires ORM instances even with expire_on_commit=False.
+            # Copy attributes before leaving this block.
             session.rollback()
     except Exception:
         session.rollback()

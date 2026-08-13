@@ -7,7 +7,7 @@ One Django Campus can attach multiple nodes (different GPUs / machines).
 
 - Local camera registry (`GET/POST/DELETE /api/v1/cameras`) — Django imports like SmartBox
 - Settings UI at `/` (Vue SPA behind nginx in Docker)
-- Trigger sink: HTTP POST to `triggers_url`
+- Trigger sink: HTTP POST to `triggers_url`. Enable or disable `presence`, `convergence`, `vif`, `stream_silent` in settings (`enabled_triggers`).
 - Optional pull from `cameras_url` on an interval
 - Pipeline runs in a background thread when `pyservicemaker` is available
 
@@ -48,13 +48,14 @@ Open http://127.0.0.1:5173
 
 ## GPU container (Docker Compose)
 
-1. Copy prepared YOLO tree into `models/yolo11n` (see `models/README.md`).
-2. Optionally `cp .env.example .env` and adjust ports/paths.
-3. Build and run:
+1. Optionally `cp .env.example .env` and adjust ports/paths.
+2. Build and run:
 
 ```bash
 docker compose up --build -d
 ```
+
+First boot prepares YOLO11n (`models/yolo11n/prepare.sh`: download weights, export ONNX, compile the DeepStream parser). Needs internet and can take several minutes. You can also copy an already prepared tree into `models/yolo11n` (see `models/README.md`).
 
 nginx (UI + `/api` proxy): http://127.0.0.1:8080
 

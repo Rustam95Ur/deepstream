@@ -7,6 +7,8 @@ venv/
 .env
 *.engine
 *.onnx
+*.pt
+models/yolo11n/nvdsinfer_custom_impl_Yolo/
 .DS_Store
 .pytest_cache/
 .ruff_cache/

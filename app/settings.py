@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.trigger_types import TRIGGER_TYPES, normalize_enabled_triggers
 
 
 def _default_data_dir() -> Path:
@@ -41,6 +43,7 @@ class NodeSettings(BaseModel):
 
     # Trigger / record / pipeline (same semantics as Campus Redis config)
     trigger_mode: str = "convergence"
+    enabled_triggers: list[str] = Field(default_factory=lambda: list(TRIGGER_TYPES))
     min_tracks: int = 2
     converge_dist_bh: float = 1.5
     speed_thresh_bh: float = 2.0
@@ -64,6 +67,11 @@ class NodeSettings(BaseModel):
     # Worker
     auto_start_pipeline: bool = True
     max_streams: int = Field(default=16, ge=1, le=128)
+
+    @field_validator("enabled_triggers", mode="before")
+    @classmethod
+    def _enabled_triggers(cls, value: object) -> list[str]:
+        return normalize_enabled_triggers(value)
 
 
 class EnvBootstrap(BaseModel):

@@ -1,15 +1,23 @@
 # YOLO models for Nexus DeepStream
 
-Copy (or symlink) the prepared YOLO11n tree from Campus:
-
-```text
-smart_edu/deploy/deepstream/models/yolo11n/  →  nexus_deepstream/models/yolo11n/
-```
-
-Required after prepare.sh:
+GPU pipeline needs a prepared YOLO11n tree at `models/yolo11n` (or `DEEPSTREAM_YOLO_DIR`):
 
 - `yolo11n.onnx`
 - `labels.txt`
 - `nvdsinfer_custom_impl_Yolo/libnvdsinfer_custom_impl_Yolo.so`
 
-Or set `DEEPSTREAM_YOLO_DIR` to an existing prepared directory.
+## Prepare (recommended)
+
+Inside the DeepStream container (needs GPU image, internet, first run several minutes):
+
+```bash
+docker compose exec nexus-deepstream bash /opt/nexus_deepstream/models/yolo11n/prepare.sh
+```
+
+`shell/boot.sh` runs the same script on startup when those files are missing. Generated ONNX / `.so` stay on the host via the `./models` volume.
+
+## Copy from Campus
+
+```text
+smart_edu/deploy/deepstream/models/yolo11n/  →  nexus_deepstream/models/yolo11n/
+```

@@ -73,12 +73,11 @@ def list_triggers(
     stmt = stmt.order_by(TriggerEventRow.created_at.desc(), TriggerEventRow.id.desc()).limit(limit + 1)
     with session_scope(write=False) as session:
         rows = list(session.scalars(stmt).all())
-    extra = len(rows) > limit
-    if extra:
-        rows = rows[:limit]
-    next_cursor = encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id) if extra and rows else None
-    return TriggerHistoryOut(
-        items=[
+        extra = len(rows) > limit
+        if extra:
+            rows = rows[:limit]
+        next_cursor = encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id) if extra and rows else None
+        items = [
             TriggerEventOut(
                 event_id=r.event_id,
                 camera_id=r.camera_id,
@@ -88,9 +87,8 @@ def list_triggers(
                 created_at=r.created_at,
             )
             for r in rows
-        ],
-        next_cursor=next_cursor,
-    )
+        ]
+    return TriggerHistoryOut(items=items, next_cursor=next_cursor)
 
 
 @router.get("/sends", response_model=SendHistoryOut)
@@ -126,12 +124,11 @@ def list_sends(
     stmt = stmt.order_by(SendEventRow.created_at.desc(), SendEventRow.id.desc()).limit(limit + 1)
     with session_scope(write=False) as session:
         rows = list(session.scalars(stmt).all())
-    extra = len(rows) > limit
-    if extra:
-        rows = rows[:limit]
-    next_cursor = encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id) if extra and rows else None
-    return SendHistoryOut(
-        items=[
+        extra = len(rows) > limit
+        if extra:
+            rows = rows[:limit]
+        next_cursor = encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id) if extra and rows else None
+        items = [
             SendEventOut(
                 event_id=r.event_id,
                 sink=r.sink,
@@ -142,6 +139,5 @@ def list_sends(
                 created_at=r.created_at,
             )
             for r in rows
-        ],
-        next_cursor=next_cursor,
-    )
+        ]
+    return SendHistoryOut(items=items, next_cursor=next_cursor)

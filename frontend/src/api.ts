@@ -9,6 +9,27 @@ export class ApiError extends Error {
   }
 }
 
+function formatDetail(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object" || !("detail" in data)) return fallback;
+  const detail = (data as { detail: unknown }).detail;
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (typeof item === "string") return item;
+      if (!item || typeof item !== "object") return "";
+      const row = item as { loc?: unknown; msg?: unknown };
+      const loc = Array.isArray(row.loc)
+        ? row.loc.filter((part) => part !== "body" && part !== "query" && part !== "path").join(".")
+        : "";
+      const msg = row.msg != null ? String(row.msg) : "";
+      if (loc && msg) return `${loc}: ${msg}`;
+      return msg || loc;
+    }).filter(Boolean);
+    if (parts.length) return parts.join("; ");
+  }
+  return fallback;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) {
@@ -24,10 +45,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    const detail = data && typeof data === "object" && "detail" in data
-      ? String((data as { detail: unknown }).detail)
-      : res.statusText;
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, formatDetail(data, res.statusText || "Ошибка сервера"));
   }
   return data as T;
 }
