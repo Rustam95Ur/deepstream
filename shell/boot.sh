@@ -31,7 +31,8 @@ if [ "${ROLE}" = "video" ]; then
   if [ ! -f "${ONNX}" ] || [ ! -f "${CUSTOM_LIB}" ]; then
     if [ -f "${PREPARE}" ]; then
       echo "YOLO11n artifacts missing; running prepare.sh (first run can take several minutes)"
-      tr -d '\r' < "${PREPARE}" > /tmp/yolo11n-prepare.sh
+      python3 -c 'from pathlib import Path; import sys; Path(sys.argv[2]).write_bytes(Path(sys.argv[1]).read_bytes().replace(b"\r", b""))' \
+        "${PREPARE}" /tmp/yolo11n-prepare.sh
       chmod +x /tmp/yolo11n-prepare.sh
       if ! /bin/bash /tmp/yolo11n-prepare.sh; then
         echo "ERROR: YOLO prepare failed. Pipeline will idle until ${ONNX} and the custom parser exist."

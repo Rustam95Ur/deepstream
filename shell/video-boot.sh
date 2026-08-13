@@ -34,7 +34,8 @@ if [ ! -f "${ONNX}" ] || [ ! -f "${CUSTOM_LIB}" ]; then
     exit 1
   fi
   echo "YOLO11n missing — first boot, running prepare.sh (needs internet, several minutes)"
-  tr -d '\r' < "${PREPARE}" > /tmp/yolo11n-prepare.sh
+  python3 -c 'from pathlib import Path; import sys; Path(sys.argv[2]).write_bytes(Path(sys.argv[1]).read_bytes().replace(b"\r", b""))' \
+    "${PREPARE}" /tmp/yolo11n-prepare.sh
   chmod +x /tmp/yolo11n-prepare.sh
   /bin/bash /tmp/yolo11n-prepare.sh
 fi
