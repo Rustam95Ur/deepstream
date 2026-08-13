@@ -259,7 +259,7 @@ onMounted(() => {
         <h2>Фильтры</h2>
         <p class="lede">Запрос уходит на сервер. Пустые поля не учитываются.</p>
       </div>
-      <div class="card-body form-grid">
+      <div class="card-body filters-row filters-many">
         <Field id="hist-from" v-model="filters.from" label="С даты" type="date" />
         <Field id="hist-to" v-model="filters.to" label="До даты" type="date" />
         <div class="ig">

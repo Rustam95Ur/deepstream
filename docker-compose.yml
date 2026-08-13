@@ -129,7 +129,10 @@ services:
       dockerfile: Dockerfile
     image: nexus-deepstream:latest
     container_name: nexus-deepstream-video
-    command: ["python3", "-m", "app.video"]
+    command:
+      - /bin/bash
+      - -c
+      - tr -d '\r' < /opt/nexus_deepstream/shell/video-boot.sh > /tmp/video-boot.sh && exec /bin/bash /tmp/video-boot.sh
     expose:
       - "8081"
     env_file:
@@ -166,6 +169,7 @@ services:
       - nexus-ds-data:/data/nexus_deepstream
       - ./models:/opt/nexus_deepstream/models
       - ./app:/opt/nexus_deepstream/app
+      - ./shell:/opt/nexus_deepstream/shell:ro
     gpus: all
     depends_on:
       nexus-deepstream-api:

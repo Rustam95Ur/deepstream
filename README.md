@@ -60,7 +60,7 @@ Open http://127.0.0.1:5173
 docker compose up --build -d
 ```
 
-First boot prepares YOLO11n (`models/yolo11n/prepare.sh`: download weights, export ONNX, compile the DeepStream parser). Needs internet and can take several minutes. You can also copy an already prepared tree into `models/yolo11n` (see `models/README.md`).
+First boot of **video** runs `shell/video-boot.sh`, which calls `models/yolo11n/prepare.sh` if `yolo11n.onnx` is missing (download weights, export ONNX, compile the DeepStream parser). Needs internet and can take several minutes. You can also copy an already prepared tree into `models/yolo11n` (see `models/README.md`).
 
 nginx (UI + `/api` proxy): http://127.0.0.1:8080
 

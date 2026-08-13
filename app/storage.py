@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, tuple_
 
 from app.db import session_scope
 from app.models import CameraRow, LinkRow
@@ -147,7 +147,9 @@ class Store:
             if self._cameras is not None and (now - self._cameras_at) < ttl:
                 return list(self._cameras)
         with session_scope(write=False) as session:
-            rows = session.scalars(select(CameraRow).order_by(CameraRow.id)).all()
+            rows = session.scalars(
+                select(CameraRow).order_by(CameraRow.name, CameraRow.id)
+            ).all()
             out = [_camera_out(r) for r in rows]
         with self._lock:
             self._cameras = out
@@ -161,6 +163,7 @@ class Store:
         enabled: bool | None = None,
         since: datetime | None = None,
         until: datetime | None = None,
+        after_name: str | None = None,
         after_id: str | None = None,
         limit: int | None = None,
     ) -> tuple[list[CameraOut], str | None]:
@@ -182,8 +185,13 @@ class Store:
         if until is not None:
             stmt = stmt.where(CameraRow.created_at <= until)
         if after_id:
-            stmt = stmt.where(CameraRow.id > after_id)
-        stmt = stmt.order_by(CameraRow.id)
+            name = after_name
+            if name is None:
+                with session_scope(write=False) as session:
+                    row = session.get(CameraRow, after_id)
+                    name = row.name if row is not None else ""
+            stmt = stmt.where(tuple_(CameraRow.name, CameraRow.id) > (name, after_id))
+        stmt = stmt.order_by(CameraRow.name, CameraRow.id)
         if limit is not None:
             stmt = stmt.limit(limit + 1)
         with session_scope(write=False) as session:
@@ -192,7 +200,9 @@ class Store:
             if extra:
                 rows = rows[:limit]
             out = [_camera_out(r) for r in rows]
-            next_cursor = encode_cursor(id=rows[-1].id) if extra and rows else None
+            next_cursor = (
+                encode_cursor(k=rows[-1].name, id=rows[-1].id) if extra and rows else None
+            )
         return out, next_cursor
 
     def get_camera(self, camera_id: str) -> CameraOut | None:

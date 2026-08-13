@@ -49,7 +49,11 @@ def list_cameras(
 ) -> CameraListOut:
     store = get_store()
     settings = store.get_settings()
-    after_id = cursor_id(cursor_or_400(cursor))
+    payload = cursor_or_400(cursor)
+    after_id = after_name = None
+    if payload is not None:
+        after_id = cursor_id(payload)
+        after_name = str(payload.get("k") or "") if "k" in payload else None
     paginated = limit is not None or after_id is not None
     page_size = (limit or 25) if paginated else None
     filtered = bool(q.strip()) or enabled is not None or since is not None or until is not None
@@ -60,6 +64,7 @@ def list_cameras(
             enabled=enabled,
             since=_aware(since),
             until=_aware(until),
+            after_name=after_name,
             after_id=after_id,
             limit=page_size,
         )

@@ -24,7 +24,7 @@ log() { echo "[yolo11n-prepare] $*"; }
 
 if [ "$(uname -s)" != "Linux" ]; then
   log "This script must run in the Linux DeepStream container:"
-  log "  docker compose exec nexus-deepstream bash /opt/nexus_deepstream/models/yolo11n/prepare.sh"
+  log "  docker compose exec nexus-deepstream-video bash /opt/nexus_deepstream/models/yolo11n/prepare.sh"
   exit 1
 fi
 

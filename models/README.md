@@ -11,10 +11,10 @@ GPU pipeline needs a prepared YOLO11n tree at `models/yolo11n` (or `DEEPSTREAM_Y
 Inside the DeepStream container (needs GPU image, internet, first run several minutes):
 
 ```bash
-docker compose exec nexus-deepstream bash /opt/nexus_deepstream/models/yolo11n/prepare.sh
+docker compose exec nexus-deepstream-video bash /opt/nexus_deepstream/models/yolo11n/prepare.sh
 ```
 
-`shell/boot.sh` runs the same script on startup when those files are missing. Generated ONNX / `.so` stay on the host via the `./models` volume.
+`shell/video-boot.sh` runs the same script on **first** video-container start when ONNX / parser `.so` are missing. Generated files stay on the host via the `./models` volume.
 
 ## Copy from Campus
 

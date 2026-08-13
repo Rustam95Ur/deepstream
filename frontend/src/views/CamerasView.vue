@@ -126,7 +126,7 @@ onMounted(() => {
         <h2>Фильтры</h2>
         <p class="lede">Запрос уходит на сервер. Пустые поля не учитываются.</p>
       </div>
-      <div class="card-body form-grid">
+      <div class="card-body filters-row">
         <Field id="cam-q" v-model="filters.q" label="Поиск" />
         <div class="ig">
           <label class="form-label" for="cam-enabled">Статус</label>
