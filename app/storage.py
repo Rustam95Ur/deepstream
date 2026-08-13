@@ -96,7 +96,6 @@ class Store:
 
     def _sync_links(self, settings: NodeSettings) -> None:
         values = {
-            "cameras_url": settings.cameras_url,
             "triggers_url": settings.triggers_url,
         }
         now = _utcnow()
@@ -202,25 +201,11 @@ class Store:
             return _camera_out(row) if row else None
 
     def upsert_camera(self, data: CameraIn) -> tuple[CameraOut, bool]:
-        now = _utcnow()
-        with session_scope(write=True) as session:
-            row = session.get(CameraRow, data.id)
-            created = row is None
-            if row is None:
-                row = CameraRow(id=data.id, created_at=now)
-                session.add(row)
-            row.name = data.name
-            row.main_uri = data.main_uri
-            row.enabled = data.enabled
-            row.external_id = data.external_id
-            row.extra = data.meta or {}
-            row.enabled_triggers = data.enabled_triggers
-            row.updated_at = now
-            session.flush()
-            out = _camera_out(row)
-        with self._lock:
-            self._invalidate_cameras()
-        return out, created
+        payload = data.model_copy(update={"id": (data.id or "").strip()})
+        if not payload.id:
+            raise ValueError("camera id required")
+        out, created_n, _updated_n = self.upsert_many([payload])
+        return out[0], bool(created_n)
 
     def delete_camera(self, camera_id: str) -> bool:
         with session_scope(write=True) as session:
@@ -232,33 +217,49 @@ class Store:
             self._invalidate_cameras()
         return True
 
-    def replace_cameras(self, cameras: list[CameraIn]) -> list[CameraOut]:
+    def patch_camera(self, camera_id: str, patch: dict[str, Any]) -> CameraOut | None:
+        current = self.get_camera(camera_id)
+        if current is None:
+            return None
+        data = current.model_dump(exclude={"uri", "rtsp_url", "created_at", "updated_at"})
+        data.update(patch)
+        cam, _ = self.upsert_camera(CameraIn.model_validate(data))
+        return cam
+
+    def upsert_many(self, cameras: list[CameraIn]) -> tuple[list[CameraOut], int, int]:
         now = _utcnow()
-        incoming = {c.id: c for c in cameras}
+        unique: dict[str, CameraIn] = {}
+        for cam in cameras:
+            cam_id = (cam.id or "").strip()
+            if not cam_id:
+                continue
+            unique[cam_id] = cam.model_copy(update={"id": cam_id, "name": cam.name or cam_id})
+        incoming = unique
+        created_n = 0
+        updated_n = 0
         with session_scope(write=True) as session:
             existing = {r.id: r for r in session.scalars(select(CameraRow)).all()}
-            for cid, row in list(existing.items()):
-                if cid not in incoming:
-                    session.delete(row)
             out: list[CameraOut] = []
-            for cam in cameras:
+            for cam in incoming.values():
                 row = existing.get(cam.id)
                 if row is None:
                     row = CameraRow(id=cam.id, created_at=now)
                     session.add(row)
+                    created_n += 1
+                else:
+                    updated_n += 1
                 row.name = cam.name
                 row.main_uri = cam.main_uri
                 row.enabled = cam.enabled
                 row.external_id = cam.external_id
                 row.extra = cam.meta or {}
-                if cam.enabled_triggers is not None or row.enabled_triggers is None:
-                    row.enabled_triggers = cam.enabled_triggers
+                row.enabled_triggers = cam.enabled_triggers
                 row.updated_at = now
                 session.flush()
                 out.append(_camera_out(row))
         with self._lock:
             self._invalidate_cameras()
-        return out
+        return out, created_n, updated_n
 
     def new_camera_id(self) -> str:
         return f"cam_{uuid4().hex[:12]}"

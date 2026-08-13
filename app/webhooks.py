@@ -1,13 +1,10 @@
-"""Webhook registry, HMAC signing, outbound retry queue."""
+"""Webhook registry and outbound retry queue."""
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import logging
 import threading
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -23,6 +20,7 @@ from app.history import record_send
 from app.models import OutboundJobRow, TriggerEventRow, WebhookRow
 from app.settings import NodeSettings
 from app.storage import get_store
+from app.web.passwords import hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 
@@ -30,29 +28,12 @@ OPEN_STATUSES = ("pending", "retrying")
 MAX_BACKOFF_S = 60.0
 
 
+class LoginTakenError(Exception):
+    pass
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def sign_body(secret: str, timestamp: str, body: bytes) -> str:
-    mac = hmac.new(
-        secret.encode("utf-8"),
-        f"{timestamp}.".encode("utf-8") + body,
-        hashlib.sha256,
-    )
-    return mac.hexdigest()
-
-
-def signature_headers(*, secret: str, event_id: str, body: bytes) -> dict[str, str]:
-    if not (secret or "").strip():
-        return {}
-    timestamp = str(int(time.time()))
-    digest = sign_body(secret.strip(), timestamp, body)
-    return {
-        "X-Nexus-Signature": f"sha256={digest}",
-        "X-Nexus-Timestamp": timestamp,
-        "X-Nexus-Event-Id": event_id,
-    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,15 +42,12 @@ class Webhook:
     name: str
     url: str
     enabled: bool
-    hmac_secret: str
+    login: str
+    auth_configured: bool
     timeout_sec: float
     max_retries: int
     created_at: datetime
     updated_at: datetime
-
-    @property
-    def hmac_configured(self) -> bool:
-        return bool(self.hmac_secret.strip())
 
     @property
     def max_attempts(self) -> int:
@@ -82,7 +60,8 @@ def _from_row(row: WebhookRow) -> Webhook:
         name=row.name or "",
         url=(row.url or "").strip(),
         enabled=bool(row.enabled),
-        hmac_secret=row.hmac_secret or "",
+        login=(row.login or "").strip(),
+        auth_configured=bool((row.login or "").strip() and (row.password_hash or "").strip()),
         timeout_sec=float(row.timeout_sec or 5.0),
         max_retries=int(row.max_retries or 0),
         created_at=row.created_at,
@@ -110,28 +89,64 @@ def get_webhook(webhook_id: str) -> Webhook | None:
         return _from_row(row) if row else None
 
 
+def _login_taken(session, login: str, *, exclude_id: str = "") -> bool:
+    needle = (login or "").strip().lower()
+    if not needle:
+        return False
+    stmt = select(WebhookRow.id).where(func.lower(WebhookRow.login) == needle)
+    if exclude_id:
+        stmt = stmt.where(WebhookRow.id != exclude_id)
+    return session.scalar(stmt) is not None
+
+
+def authenticate_webhook_login(login: str, password: str) -> Webhook | None:
+    name = (login or "").strip()
+    secret = password or ""
+    if not name or not secret:
+        return None
+    if not db_enabled():
+        return None
+    with session_scope(write=False) as session:
+        row = session.scalar(
+            select(WebhookRow).where(
+                func.lower(WebhookRow.login) == name.lower(),
+                WebhookRow.enabled.is_(True),
+            )
+        )
+        if row is None or not (row.password_hash or "").strip():
+            return None
+        if not verify_password(secret, row.password_hash):
+            return None
+        return _from_row(row)
+
+
 def create_webhook(
     *,
     name: str,
     url: str,
     enabled: bool = True,
-    hmac_secret: str = "",
+    login: str = "",
+    password: str = "",
     timeout_sec: float = 5.0,
     max_retries: int = 5,
 ) -> Webhook:
     now = _utcnow()
-    row = WebhookRow(
-        id=str(uuid4()),
-        name=(name or "").strip() or "webhook",
-        url=(url or "").strip(),
-        enabled=bool(enabled),
-        hmac_secret=(hmac_secret or "").strip(),
-        timeout_sec=float(timeout_sec),
-        max_retries=int(max_retries),
-        created_at=now,
-        updated_at=now,
-    )
+    login_value = (login or "").strip()
     with session_scope(write=True) as session:
+        if _login_taken(session, login_value):
+            raise LoginTakenError
+        row = WebhookRow(
+            id=str(uuid4()),
+            name=(name or "").strip() or "webhook",
+            url=(url or "").strip(),
+            enabled=bool(enabled),
+            login=login_value,
+            password_hash=hash_password(password) if password else "",
+            timeout_sec=float(timeout_sec),
+            max_retries=int(max_retries),
+            created_at=now,
+            updated_at=now,
+        )
         session.add(row)
         session.flush()
         return _from_row(row)
@@ -145,19 +160,25 @@ def update_webhook(
     enabled: bool,
     timeout_sec: float,
     max_retries: int,
-    hmac_secret: str | None = None,
+    login: str | None = None,
+    password: str | None = None,
 ) -> Webhook | None:
     with session_scope(write=True) as session:
         row = session.get(WebhookRow, webhook_id)
         if row is None:
             return None
+        if login is not None:
+            login_value = login.strip()
+            if _login_taken(session, login_value, exclude_id=webhook_id):
+                raise LoginTakenError
+            row.login = login_value
         row.name = (name or "").strip() or row.name
         row.url = (url or "").strip()
         row.enabled = bool(enabled)
         row.timeout_sec = float(timeout_sec)
         row.max_retries = int(max_retries)
-        if hmac_secret is not None:
-            row.hmac_secret = hmac_secret.strip()
+        if password:
+            row.password_hash = hash_password(password)
         row.updated_at = _utcnow()
         session.flush()
         return _from_row(row)
@@ -303,15 +324,15 @@ def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     if hook is not None and not hook.enabled:
         return False, None, "webhook disabled"
     url = (hook.url if hook else job.url) or job.url
-    secret = hook.hmac_secret if hook else ""
     timeout = hook.timeout_sec if hook else 5.0
     body = json.dumps(job.payload or {}, ensure_ascii=False).encode("utf-8")
     event_id = str(job.event_id or "")
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "nexus-deepstream/0.1",
-        **signature_headers(secret=secret, event_id=event_id, body=body),
     }
+    if event_id:
+        headers["X-Nexus-Event-Id"] = event_id
     return post_json(url, body, headers=headers, timeout_sec=timeout)
 
 

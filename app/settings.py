@@ -22,14 +22,6 @@ class NodeSettings(BaseModel):
 
     node_id: str = Field(default="ds-1", min_length=1, max_length=64)
     node_name: str = Field(default="DeepStream Node 1", max_length=128)
-    api_token: str = Field(default="", description="If set, require Bearer token on API")
-
-    # Pull cameras from backend (optional). Local CRUD always works.
-    cameras_url: str = Field(
-        default="",
-        description="GET JSON {cameras:[...]} from Django / another source",
-    )
-    cameras_poll_sec: int = Field(default=60, ge=0, le=3600)
 
     # Where to POST triggers (primary for multi-node product)
     triggers_url: str = Field(

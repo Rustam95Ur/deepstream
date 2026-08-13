@@ -6,6 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
@@ -20,7 +21,6 @@ from app.db import init_db
 from app.storage import get_store
 from app.web import SPA_DIR, router as web_router
 from app.webhooks import get_outbound_worker, seed_webhooks_from_settings
-from app.worker.cameras_poller import get_poller
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,9 +42,7 @@ async def lifespan(_app: FastAPI):
         store.data_dir,
     )
     get_outbound_worker().start()
-    get_poller().start()
     yield
-    get_poller().stop()
     get_outbound_worker().stop()
 
 
@@ -53,6 +51,13 @@ app = FastAPI(
     version=__version__,
     description="Standalone DeepStream first-line node (cameras + triggers)",
     lifespan=lifespan,
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 spa_assets = SPA_DIR / "assets"

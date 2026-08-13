@@ -15,7 +15,8 @@ const form = reactive({
   name: "",
   url: "",
   enabled: true,
-  hmac_secret: "",
+  login: "",
+  password: "",
   timeout_sec: 5,
   max_retries: 5,
 });
@@ -37,7 +38,8 @@ function openNew() {
   form.name = "";
   form.url = "";
   form.enabled = true;
-  form.hmac_secret = "";
+  form.login = "";
+  form.password = "";
   form.timeout_sec = 5;
   form.max_retries = 5;
   showForm.value = true;
@@ -48,7 +50,8 @@ function openEdit(hook: Webhook) {
   form.name = hook.name;
   form.url = hook.url;
   form.enabled = hook.enabled;
-  form.hmac_secret = "";
+  form.login = hook.login;
+  form.password = "";
   form.timeout_sec = hook.timeout_sec;
   form.max_retries = hook.max_retries;
   showForm.value = true;
@@ -60,16 +63,27 @@ function closeForm() {
 
 async function saveHook() {
   const url = form.url.trim();
+  const login = form.login.trim();
+  const password = form.password.trim();
   if (!url) return;
+  if (!editingId.value && (!login || password.length < 8)) {
+    store.error = "Укажите логин и пароль (минимум 8 символов) для входящего API";
+    return;
+  }
+  if (editingId.value && password && password.length < 8) {
+    store.error = "Пароль минимум 8 символов";
+    return;
+  }
   savingHook.value = true;
   try {
     const body = {
       name: form.name.trim() || "webhook",
       url,
       enabled: form.enabled,
+      login,
+      password: password ? password : editingId.value ? null : "",
       timeout_sec: Number(form.timeout_sec) || 5,
       max_retries: Number(form.max_retries) || 0,
-      hmac_secret: form.hmac_secret.trim() ? form.hmac_secret.trim() : editingId.value ? null : "",
     };
     if (editingId.value) {
       await api.updateWebhook(editingId.value, body);
@@ -104,11 +118,9 @@ async function removeHook(hook: Webhook) {
     <form class="card" @submit.prevent="saveSettings">
       <div class="card-head">
         <h2>Интеграции</h2>
-        <p class="lede">Список камер, клипы и глобальный выключатель HTTP.</p>
+        <p class="lede">Клипы и глобальный выключатель HTTP.</p>
       </div>
       <div class="card-body form-grid">
-        <Field id="cameras-url" v-model="store.settings.cameras_url" class="span-2" label="URL списка камер" addon="GET" />
-        <Field id="poll-sec" v-model="store.settings.cameras_poll_sec" label="Интервал опроса, сек" type="number" />
         <div><SwitchField id="http-sink" v-model="store.settings.enable_http_sink" label="Отправка по HTTP" /></div>
         <div><SwitchField id="clip-record" v-model="store.settings.enable_clip_record" label="Ring-buffer клипов" /></div>
       </div>
@@ -119,8 +131,74 @@ async function removeHook(hook: Webhook) {
 
     <section class="card">
       <div class="card-head">
+        <h2>Входящий API</h2>
+        <p class="lede">
+          Django и другие сервисы пушат камеры сюда. В заголовке — логин и пароль webhook’а (HTTP Basic).
+        </p>
+      </div>
+      <div class="card-body">
+        <p class="delivery-line">
+          <code>Authorization: Basic base64(login:password)</code>
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Метод</th>
+                <th>Путь</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>GET</td>
+                <td class="uri">/api/v1/cameras</td>
+                <td>список</td>
+              </tr>
+              <tr>
+                <td>POST</td>
+                <td class="uri">/api/v1/cameras</td>
+                <td>создать или обновить</td>
+              </tr>
+              <tr>
+                <td>PUT</td>
+                <td class="uri">/api/v1/cameras/{id}</td>
+                <td>создать или обновить</td>
+              </tr>
+              <tr>
+                <td>PATCH</td>
+                <td class="uri">/api/v1/cameras/{id}</td>
+                <td>частично</td>
+              </tr>
+              <tr>
+                <td>DELETE</td>
+                <td class="uri">/api/v1/cameras/{id}</td>
+                <td>удалить</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <pre class="code-sample">POST /api/v1/cameras
+Authorization: Basic base64(login:password)
+Content-Type: application/json
+
+{
+  "id": "cam_gate",
+  "name": "Калитка",
+  "rtsp_url": "rtsp://user:pass@10.0.0.12/stream1",
+  "enabled": true,
+  "external_id": "42"
+}</pre>
+      </div>
+      <div class="card-foot end">
+        <button type="button" class="ghost" @click="openNew">Добавить webhook</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
         <h2>Webhook’и ({{ hooks.length }})</h2>
-        <p class="lede">Каждый включённый URL получает тот же контракт. HMAC необязателен.</p>
+        <p class="lede">Исходящие сработки на URL. Логин и пароль — для входящего API камер.</p>
       </div>
       <div class="card-body">
         <div v-if="hooks.length" class="table-wrap">
@@ -129,7 +207,7 @@ async function removeHook(hook: Webhook) {
               <tr>
                 <th>Имя</th>
                 <th>URL</th>
-                <th>HMAC</th>
+                <th>Логин</th>
                 <th>Ретраи</th>
                 <th></th>
               </tr>
@@ -143,7 +221,7 @@ async function removeHook(hook: Webhook) {
                   </span>
                 </td>
                 <td class="uri">{{ hook.url }}</td>
-                <td>{{ hook.hmac_configured ? "да" : "нет" }}</td>
+                <td>{{ hook.login || "—" }}</td>
                 <td>{{ hook.max_retries }}</td>
                 <td class="td-action">
                   <div class="row">
@@ -169,16 +247,20 @@ async function removeHook(hook: Webhook) {
       <form class="card modal modal-form" @submit.prevent="saveHook">
         <div class="card-head">
           <h2>{{ editingId ? "Изменить webhook" : "Новый webhook" }}</h2>
-          <p class="lede">Подпись: HMAC-SHA256(secret, timestamp + "." + body).</p>
+          <p class="lede">Логин и пароль партнёр передаёт в Authorization: Basic при запросах камер.</p>
         </div>
         <div class="card-body form-grid">
           <Field id="wh-name" v-model="form.name" label="Имя" />
           <Field id="wh-url" v-model="form.url" class="span-2" label="URL" addon="POST" required />
+          <Field id="wh-login" v-model="form.login" label="Логин" :required="!editingId" autocomplete="username" />
           <Field
-            id="wh-secret"
-            v-model="form.hmac_secret"
-            class="span-2"
-            :label="editingId ? 'HMAC-секрет (пусто = не менять)' : 'HMAC-секрет'"
+            id="wh-password"
+            v-model="form.password"
+            label="Пароль"
+            type="password"
+            :required="!editingId"
+            autocomplete="new-password"
+            :hint="editingId ? 'Пусто = не менять' : 'Минимум 8 символов'"
           />
           <Field id="wh-timeout" v-model="form.timeout_sec" label="Таймаут, сек" type="number" />
           <Field id="wh-retries" v-model="form.max_retries" label="Повторы после ошибки" type="number" />

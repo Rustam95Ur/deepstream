@@ -36,7 +36,6 @@ function onInput(event: Event) {
 <template>
   <div class="ig" :class="{ 'has-addon': !!addon }">
     <label class="form-label" :for="id">{{ label }}</label>
-    <p v-if="hint" class="field-hint">{{ hint }}</p>
     <span v-if="addon" class="ig-addon">{{ addon }}</span>
     <div class="form-floating">
       <input
@@ -54,5 +53,6 @@ function onInput(event: Event) {
         @input="onInput"
       />
     </div>
+    <p v-if="hint" class="field-hint">{{ hint }}</p>
   </div>
 </template>

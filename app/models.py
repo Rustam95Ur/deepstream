@@ -52,6 +52,8 @@ class WebhookRow(Base):
     url: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     hmac_secret: Mapped[str] = mapped_column(Text, default="")
+    login: Mapped[str] = mapped_column(String(128), default="")
+    password_hash: Mapped[str] = mapped_column(Text, default="")
     timeout_sec: Mapped[float] = mapped_column(Float, default=5.0)
     max_retries: Mapped[int] = mapped_column(Integer, default=5)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

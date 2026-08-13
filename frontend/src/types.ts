@@ -11,9 +11,6 @@ export interface Session {
 export interface NodeSettings {
   node_id: string;
   node_name: string;
-  api_token: string;
-  cameras_url: string;
-  cameras_poll_sec: number;
   triggers_url: string;
   triggers_timeout_sec: number;
   enable_http_sink: boolean;
@@ -144,7 +141,8 @@ export interface Webhook {
   name: string;
   url: string;
   enabled: boolean;
-  hmac_configured: boolean;
+  login: string;
+  auth_configured: boolean;
   timeout_sec: number;
   max_retries: number;
   created_at: string;
@@ -155,7 +153,8 @@ export interface WebhookIn {
   name: string;
   url: string;
   enabled: boolean;
-  hmac_secret?: string | null;
+  login: string;
+  password?: string | null;
   timeout_sec: number;
   max_retries: number;
 }

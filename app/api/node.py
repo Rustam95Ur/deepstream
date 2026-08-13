@@ -11,7 +11,6 @@ from app.settings import NodeSettings
 from app.storage import get_store
 from app.video_client import notify_reload, video_health, worker_start, worker_status, worker_stop
 from app.webhooks import list_enabled_webhooks
-from app.worker.cameras_poller import get_poller
 
 router = APIRouter(prefix="/api/v1", tags=["node"])
 
@@ -38,7 +37,6 @@ def health() -> HealthOut:
         pipeline_available=st.available,
         pipeline_detail=st.detail,
         triggers_url=triggers_url,
-        cameras_url=settings.cameras_url,
     )
 
 
@@ -84,9 +82,3 @@ def post_worker_stop() -> WorkerStatusOut:
 @router.post("/worker/reload", response_model=WorkerStatusOut, dependencies=[ApiAuth])
 def post_worker_reload() -> WorkerStatusOut:
     return notify_reload() or worker_status()
-
-
-@router.post("/cameras-pull", dependencies=[ApiAuth])
-def cameras_pull() -> dict:
-    n = get_poller().sync_once()
-    return {"ok": True, "count": n}

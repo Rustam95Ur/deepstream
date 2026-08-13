@@ -1,18 +1,18 @@
-"""Cameras CRUD — Django can pull/push like SmartBox channels."""
+"""Cameras CRUD for the console and machine clients (Django / SmartBox-style)."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
-from app.api import ApiAuth
+from app.api import CameraApiAuth
 from app.paging import cursor_id, cursor_or_400
-from app.schemas import CameraIn, CameraListOut, CameraOut
-from app.storage import get_store
+from app.schemas import CameraIn, CameraListOut, CameraOut, CameraPatch
+from app.storage import Store, get_store
 from app.video_client import notify_reload
 
-router = APIRouter(prefix="/api/v1/cameras", tags=["cameras"], dependencies=[ApiAuth])
+router = APIRouter(prefix="/api/v1/cameras", tags=["cameras"], dependencies=[CameraApiAuth])
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -21,6 +21,21 @@ def _aware(dt: datetime | None) -> datetime | None:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def _with_id(store: Store, body: CameraIn, *, camera_id: str = "") -> CameraIn:
+    cam_id = (camera_id or body.id or body.external_id or "").strip() or store.new_camera_id()
+    return body.model_copy(update={"id": cam_id, "name": body.name or cam_id})
+
+
+def _guard_capacity(store: Store, new_ids: set[str]) -> None:
+    settings = store.get_settings()
+    existing = {c.id for c in store.list_cameras()}
+    if len(existing | new_ids) > settings.max_streams:
+        raise HTTPException(
+            status_code=400,
+            detail=f"max_streams={settings.max_streams} reached",
+        )
 
 
 @router.get("", response_model=CameraListOut)
@@ -69,29 +84,36 @@ def get_camera(camera_id: str) -> CameraOut:
     return cam
 
 
-@router.post("", response_model=CameraOut, status_code=status.HTTP_201_CREATED)
-def create_or_upsert_camera(body: CameraIn) -> CameraOut:
+@router.post("", response_model=CameraOut)
+def create_or_upsert_camera(body: CameraIn, response: Response) -> CameraOut:
     store = get_store()
-    settings = store.get_settings()
-    cams = store.list_cameras()
-    if body.id not in {c.id for c in cams} and len(cams) >= settings.max_streams:
-        raise HTTPException(
-            status_code=400,
-            detail=f"max_streams={settings.max_streams} reached",
-        )
-    cam, _created = store.upsert_camera(body)
+    payload = _with_id(store, body)
+    _guard_capacity(store, {payload.id})
+    cam, created = store.upsert_camera(payload)
     notify_reload()
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return cam
 
 
 @router.put("/{camera_id}", response_model=CameraOut)
-def update_camera(camera_id: str, body: CameraIn) -> CameraOut:
-    if body.id != camera_id:
+def upsert_camera(camera_id: str, body: CameraIn, response: Response) -> CameraOut:
+    if body.id and body.id != camera_id:
         raise HTTPException(status_code=400, detail="id mismatch")
     store = get_store()
-    if not store.get_camera(camera_id):
+    payload = _with_id(store, body, camera_id=camera_id)
+    _guard_capacity(store, {payload.id})
+    cam, created = store.upsert_camera(payload)
+    notify_reload()
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return cam
+
+
+@router.patch("/{camera_id}", response_model=CameraOut)
+def patch_camera(camera_id: str, body: CameraPatch) -> CameraOut:
+    patch = body.model_dump(exclude_unset=True)
+    cam = get_store().patch_camera(camera_id, patch)
+    if not cam:
         raise HTTPException(status_code=404, detail="Camera not found")
-    cam, _ = store.upsert_camera(body)
     notify_reload()
     return cam
 

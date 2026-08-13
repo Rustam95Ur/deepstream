@@ -16,7 +16,7 @@ const titles: Record<string, { title: string; desc: string }> = {
   "camera-new": { title: "Новая камера", desc: "Добавление потока" },
   "camera-edit": { title: "Изменить камеру", desc: "Параметры потока" },
   settings: { title: "Настройки", desc: "Идентификация и лимиты" },
-  ingest: { title: "Связь", desc: "Webhook’и, HMAC и клипы" },
+  ingest: { title: "Связь", desc: "Входящий API камер и исходящие webhook’и" },
   triggers: { title: "Триггеры", desc: "Какие события слать и пороги" },
   history: { title: "История", desc: "Сработки и отправки" },
   users: { title: "Пользователи", desc: "Доступ в консоль по email" },

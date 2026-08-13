@@ -5,12 +5,11 @@ One Django Campus can attach multiple nodes (different GPUs / machines).
 
 ## Features
 
-- Local camera registry (`GET/POST/DELETE /api/v1/cameras`) — Django imports like SmartBox
+- Local camera registry (`GET/POST/PUT/PATCH/DELETE /api/v1/cameras`) — Django pushes and pulls like SmartBox channels
 - Settings UI at `/` (Vue SPA behind nginx in Docker)
-- Multiple signed webhooks: HMAC, retries, dead-letter queue, resend from history
+- Multiple webhooks: retries, dead-letter queue, resend from history
 - Incident clip from the RTSP ring-buffer (Campus `rtsp_writer` path) uploaded to MinIO; payload always has `event_id`, `clip`, `video_url`
 - Per-camera enable/disable of `presence`, `convergence`, `vif`, `stream_silent` (or inherit node settings)
-- Optional pull from `cameras_url` on an interval
 - Pipeline runs in a separate GPU process when `pyservicemaker` is available
 
 ## Quick start (API only, no GPU)
@@ -81,7 +80,7 @@ API and video share `/data/nexus_deepstream` (settings.json + ring-buffer segmen
 
 Hot path (probe thread) never waits on the network or the database:
 
-- Clip work and webhook enqueue go to an in-memory queue (`NEXUS_DS_SINK_WORKERS`). Delivery is a Postgres job queue with HMAC, backoff, and a dead-letter status.
+- Clip work and webhook enqueue go to an in-memory queue (`NEXUS_DS_SINK_WORKERS`). Delivery is a Postgres job queue with backoff and a dead-letter status.
 - History inserts are batched (`NEXUS_DS_HISTORY_BATCH` / `NEXUS_DS_HISTORY_FLUSH_MS`) on a background writer. Reads do not commit.
 - Camera list is cached (`NEXUS_DS_CAMERA_CACHE_MS`) and invalidated on write.
 
@@ -93,13 +92,15 @@ See `.env.example` for pool, queue, and cache knobs.
 |--------|------|---------|
 | GET | `/api/v1/health` | node status |
 | GET | `/api/v1/cameras` | list cameras (`q`, `enabled`, `since`, `until`, `cursor`, `limit`; omit `limit` for the full list) |
-| POST | `/api/v1/cameras` | upsert camera `{id, name, main_uri, enabled, enabled_triggers?}` (`null` = inherit node types) |
+| GET | `/api/v1/cameras/{id}` | one camera |
+| POST | `/api/v1/cameras` | upsert one camera (`201` created / `200` updated). Aliases: `camera_id`, `rtsp_url`, `uri` |
+| PUT | `/api/v1/cameras/{id}` | upsert by id (creates if missing) |
+| PATCH | `/api/v1/cameras/{id}` | partial update |
 | DELETE | `/api/v1/cameras/{id}` | remove |
 | GET/PUT | `/api/v1/settings` | node settings |
 | GET | `/api/v1/video/health` | GPU pipeline + per-camera ring-buffer health |
-| GET/POST | `/api/v1/webhooks` | webhook list / create `{name, url, enabled, hmac_secret, timeout_sec, max_retries}` |
+| GET/POST | `/api/v1/webhooks` | webhook list / create `{name, url, enabled, login, password, timeout_sec, max_retries}` |
 | PUT/DELETE | `/api/v1/webhooks/{id}` | update / remove webhook |
-| POST | `/api/v1/cameras-pull` | pull from `cameras_url` |
 | GET | `/api/v1/auth/session` | UI session status |
 | POST | `/api/v1/auth/login` | UI session cookie (`email` + `password`; first user also sends `password_confirm`) |
 | POST | `/api/v1/auth/logout` | clear UI cookie |
@@ -114,7 +115,25 @@ See `.env.example` for pool, queue, and cache knobs.
 | GET | `/api/v1/history/outbound` | webhook job queue (`status=dead` for failures) |
 | POST | `/api/v1/history/outbound/{id}/retry` | reset a job and send again |
 
-If `api_token` is set in settings, send `Authorization: Bearer <token>` for machine access. The Vue UI logs in with email/password and uses an httpOnly cookie. The first visit with an empty `users` table creates the initial operator.
+If a webhook has a login and password, Campus sends them on the inbound camera API as HTTP Basic (`Authorization: Basic base64(login:password)`). The Vue UI logs in with email/password and uses an httpOnly cookie. The first visit with an empty `users` table creates the initial operator.
+
+Django (or any other service) owns the camera on its side, then **pushes** it to this node:
+
+```http
+POST /api/v1/cameras
+Authorization: Basic base64(login:password)
+Content-Type: application/json
+
+{
+  "id": "cam_gate",
+  "name": "Калитка",
+  "rtsp_url": "rtsp://user:pass@10.0.0.12/stream1",
+  "enabled": true,
+  "external_id": "42"
+}
+```
+
+`main_uri`, `uri`, and `rtsp_url` are the same field. The node also answers `GET /api/v1/cameras` so Campus can import like a SmartBox `channel/list`. Outbound webhooks are the other direction: this node POSTs trigger payloads to Django.
 
 ### Trigger payload (POST to each webhook)
 
@@ -144,21 +163,15 @@ Stable contract. `clip` and `video_url` are always present (empty strings if the
 }
 ```
 
-If the webhook has an HMAC secret, the node signs the raw body:
-
-- `X-Nexus-Signature: sha256=<hex>`
-- `X-Nexus-Timestamp: <unix seconds>`
-- `X-Nexus-Event-Id: <event_id>`
-
-Verify with `HMAC-SHA256(secret, timestamp + "." + body)`. Failed deliveries retry with backoff, then sit in the dead-letter queue until resend from history.
+Failed deliveries retry with backoff, then sit in the dead-letter queue until resend from history.
 
 On an incident trigger the node waits `post_s`, concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads the MP4 to MinIO, then enqueues POSTs. `stream_silent` skips the clip. The ring-buffer (`gst-launch` + `splitmuxsink`, ~3s segments) runs 24/7 for enabled RTSP cameras.
 
 ## Multi-node with one Django
 
 1. Deploy node A (`node_id=ds-1`) and node B (`node_id=ds-2`).
-2. On each node add a webhook → same Campus ingest endpoint (optional HMAC secret).
-3. Add cameras per node (UI/API) **or** set `cameras_url` filtered by `node_id`.
+2. On each node add a webhook (URL + login/password for inbound camera API) → same Campus ingest endpoint.
+3. Campus creates/updates a camera locally, then `POST/PUT /api/v1/cameras` on the chosen node. Campus can also `GET /api/v1/cameras` to import.
 4. Later in Campus: model `DeepStreamNode` + import cameras (create/update) + reject if camera already on another node.
 
 ## Move to its own git repo
