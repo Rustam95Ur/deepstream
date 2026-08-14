@@ -44,4 +44,6 @@ RUN mkdir -p /data/nexus_deepstream /tmp/nexus_deepstream \
 EXPOSE 8080
 VOLUME ["/data/nexus_deepstream"]
 
-CMD ["/bin/bash", "/opt/nexus_deepstream/shell/boot.sh"]
+# NGC Triton/DeepStream ENTRYPOINT prints the license then exec's bash with no TTY (exit 0, restart loop).
+ENTRYPOINT ["/bin/bash"]
+CMD ["/opt/nexus_deepstream/shell/boot.sh"]

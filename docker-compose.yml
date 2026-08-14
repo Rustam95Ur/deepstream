@@ -129,12 +129,8 @@ services:
       dockerfile: Dockerfile
     image: nexus-deepstream:latest
     container_name: nexus-deepstream-video
-    command:
-      - /bin/bash
-      - -c
-      - |
-        python3 -c 'from pathlib import Path; p=Path("/tmp/video-boot.sh"); p.write_bytes(Path("/opt/nexus_deepstream/shell/video-boot.sh").read_bytes().replace(b"\r", b"")); p.chmod(0o755)'
-        exec /bin/bash /tmp/video-boot.sh
+    entrypoint: ["/bin/bash"]
+    command: ["/opt/nexus_deepstream/shell/video-boot.sh"]
     expose:
       - "8081"
     env_file:
