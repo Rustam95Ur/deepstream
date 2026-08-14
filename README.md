@@ -66,6 +66,40 @@ nginx (UI + `/api` proxy): http://127.0.0.1:8080
 
 Requires NVIDIA Container Toolkit (`gpus: all` on **video**). nginx is the public entry; the API and video containers are internal.
 
+## Local RTSP test source
+
+MediaMTX + ffmpeg. Without a clip it uses `testsrc`; with a file it loops that video.
+
+Put an MP4 here (H.264 preferred):
+
+```text
+deploy/rtsp-test/video/cam1.mp4
+```
+
+Then restart the publisher:
+
+```bash
+docker compose -f docker-compose.rtsp-test.yml up -d
+# or: sh shell/rtsp-test-up.sh
+```
+
+Together with the GPU stack (video container can pull `mediamtx` by hostname):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.rtsp-test.yml up -d
+```
+
+| URL | Use |
+|-----|-----|
+| `rtsp://127.0.0.1:8554/cam1` | VLC / ffplay / camera on the host |
+| `http://127.0.0.1:8888/cam1/` | HLS in the browser |
+| `http://127.0.0.1:8889/cam1/` | WebRTC in the browser |
+| `rtsp://mediamtx:8554/cam1` | `Camera.rtsp_url` from the **video** container |
+
+Stop: `docker compose -f docker-compose.rtsp-test.yml down`
+
+Publisher knobs: `RTSP_TEST_SIZE` (default `1280x720`), `RTSP_TEST_FPS` (default `25`). Extra path `cam2` is reserved in `deploy/rtsp-test/mediamtx.yml` for a second ffmpeg if you need it.
+
 Postgres stores cameras, users, webhooks, trigger history, and the outbound job queue. Schema is applied with Alembic on **API** startup. `NEXUS_DS_DATABASE_URL` is required. There is no `cameras.json`.
 
 ## Production stack

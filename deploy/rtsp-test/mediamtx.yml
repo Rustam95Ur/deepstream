@@ -1,0 +1,23 @@
+# MediaMTX — local RTSP for DeepStream / VLC.
+# Docs: https://github.com/bluenviron/mediamtx
+
+logLevel: info
+
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp, udp]
+
+rtmp: no
+hls: yes
+hlsAddress: :8888
+webrtc: yes
+webrtcAddress: :8889
+webrtcICEServers2: []
+
+pathDefaults:
+  sourceOnDemand: no
+
+paths:
+  cam1:
+    # ffmpeg publisher → viewers / DeepStream
+  cam2:

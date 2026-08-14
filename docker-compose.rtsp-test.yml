@@ -1,0 +1,47 @@
+# Local RTSP source for DeepStream and manual viewing.
+#
+# Standalone:
+#   docker compose -f docker-compose.rtsp-test.yml up -d
+#
+# Together with the GPU stack (same Compose project → video can pull mediamtx):
+#   docker compose -f docker-compose.yml -f docker-compose.rtsp-test.yml up -d
+#
+# Watch:
+#   VLC / ffplay:  rtsp://127.0.0.1:8554/cam1
+#   HLS:           http://127.0.0.1:8888/cam1/
+#   WebRTC:        http://127.0.0.1:8889/cam1/
+#
+# Camera.rtsp_url:
+#   from the host:              rtsp://127.0.0.1:8554/cam1
+#   from the video container:   rtsp://mediamtx:8554/cam1
+#   from another Docker stack:  rtsp://host.docker.internal:8554/cam1
+#
+# Optional clip (looped if present):
+#   deploy/rtsp-test/video/cam1.mp4
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.11.3
+    container_name: nexus-deepstream-rtsp-test
+    restart: unless-stopped
+    ports:
+      - "8554:8554"
+      - "8888:8888"
+      - "8889:8889"
+    volumes:
+      - ./deploy/rtsp-test/mediamtx.yml:/mediamtx.yml:ro
+
+  rtsp_publisher:
+    image: linuxserver/ffmpeg:version-7.1-cli
+    container_name: nexus-deepstream-rtsp-publisher
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+    environment:
+      RTSP_URL: rtsp://mediamtx:8554/cam1
+      VIDEO_SIZE: ${RTSP_TEST_SIZE:-1280x720}
+      FPS: ${RTSP_TEST_FPS:-25}
+    volumes:
+      - ./deploy/rtsp-test/publish-testsrc.sh:/publish-testsrc.sh:ro
+      - ./deploy/rtsp-test/video:/video:ro
+    entrypoint: ["/bin/sh", "/publish-testsrc.sh"]
