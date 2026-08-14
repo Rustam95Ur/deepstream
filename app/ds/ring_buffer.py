@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from app.ds.rtsp import resolve_codec, sanitize_rtsp_url
+from app.ds.rtsp import sanitize_rtsp_url
 from app.settings import _default_data_dir
 from app.storage import get_store
 
@@ -60,10 +60,6 @@ def _latency_ms() -> int:
 
 def _stagger_sec() -> float:
     return max(0.0, _env_float("NEXUS_DS_RING_STAGGER_SEC", 0.3))
-
-
-def _health_interval_sec() -> int:
-    return max(5, _env_int("NEXUS_DS_RING_HEALTH_CHECK_INTERVAL_SEC", 20))
 
 
 def _stall_multiplier() -> float:
@@ -142,12 +138,21 @@ def load_rtsp_cameras() -> list[CameraSpec]:
     if not settings.enable_clip_record:
         return []
     specs: list[CameraSpec] = []
+    seen_uri: set[str] = set()
     for cam in store.list_cameras():
         if not cam.enabled:
             continue
         uri = (cam.main_uri or "").strip()
         if not uri.lower().startswith("rtsp://"):
             continue
+        key = uri.lower()
+        if key in seen_uri:
+            logger.warning(
+                "Incident ring-buffer: skip duplicate RTSP camera=%s",
+                cam.name or cam.id,
+            )
+            continue
+        seen_uri.add(key)
         specs.append(
             CameraSpec(
                 camera_id=cam.id,
@@ -167,7 +172,7 @@ class IncidentRingBufferWorker:
         self.spec = spec
         self.name = spec.name
         self.safe_name = safe_camera_dirname(spec.name)
-        self.codec = resolve_codec(spec.rtsp_url, spec.name, default=_default_codec())
+        self.codec = _default_codec()
         self.out_dir = segment_root_path / self.safe_name
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.location_pattern = str(self.out_dir / f"{self.safe_name}_%05d.mp4")
@@ -179,6 +184,8 @@ class IncidentRingBufferWorker:
         self.started_at: float | None = None
         self.consecutive_restarts = 0
         self.total_restarts = 0
+        self._tried_codecs: set[str] = set()
+        self.next_restart_at: float = 0.0
 
     def build_cmd(self) -> list[str]:
         url = sanitize_rtsp_url(self.spec.rtsp_url) or self.spec.rtsp_url
@@ -219,6 +226,8 @@ class IncidentRingBufferWorker:
         log_f.write(" ".join(cmd) + "\n")
         self.process = subprocess.Popen(cmd, stdout=log_f, stderr=log_f)
         self.started_at = time.time()
+        self.next_restart_at = 0.0
+        self._tried_codecs.add(self.codec)
         self._log_fh = log_f
         logger.info(
             "Incident ring-buffer [%s]: started pid=%s codec=%s segment=%ss -> %s",
@@ -294,6 +303,44 @@ class IncidentRingBufferWorker:
 
     def restart_backoff_delay(self) -> float:
         return float(min(2**self.consecutive_restarts, _max_restart_backoff_sec()))
+
+    def maybe_flip_codec_after_crash(self) -> bool:
+        """Quick gst death is usually the wrong depay (H264 vs H265)."""
+        started = self.started_at
+        if started is None or (time.time() - started) > 8.0:
+            self._tried_codecs = {self.codec}
+            return False
+        nxt = "h264" if self.codec == "h265" else "h265"
+        if nxt in self._tried_codecs:
+            return False
+        logger.warning(
+            "Incident ring-buffer [%s]: codec %s died in %.1fs, trying %s",
+            self.name,
+            self.codec,
+            time.time() - started,
+            nxt,
+        )
+        self.codec = nxt
+        return True
+
+    def schedule_restart(self, now: float) -> None:
+        if self.next_restart_at > 0:
+            return
+        self._close_log()
+        flipped = self.maybe_flip_codec_after_crash()
+        if flipped:
+            delay = 0.4
+        else:
+            self.consecutive_restarts += 1
+            delay = self.restart_backoff_delay()
+        self.next_restart_at = now + delay
+        logger.warning(
+            "Incident ring-buffer [%s]: exited code=%s codec=%s, restart in %.1fs",
+            self.name,
+            self.exit_code(),
+            self.codec,
+            delay,
+        )
 
 
 def gc_old_segments(
@@ -421,16 +468,11 @@ class IncidentRingBufferSupervisor:
         stall_after = segment_dur_sec() * _stall_multiplier()
         for w in list(self._workers.values()):
             if not w.is_alive():
-                code = w.exit_code()
-                delay = w.restart_backoff_delay()
-                logger.warning(
-                    "Incident ring-buffer [%s]: exited code=%s, restart in %.0fs",
-                    w.name,
-                    code,
-                    delay,
-                )
-                time.sleep(delay)
-                w.consecutive_restarts += 1
+                if w.next_restart_at <= 0:
+                    w.schedule_restart(now)
+                if now < w.next_restart_at:
+                    continue
+                w.next_restart_at = 0.0
                 w.total_restarts += 1
                 try:
                     w.start()
@@ -456,6 +498,7 @@ class IncidentRingBufferSupervisor:
                 w.kill()
                 w.consecutive_restarts += 1
                 w.total_restarts += 1
+                w._tried_codecs = {w.codec}
                 try:
                     w.start()
                 except Exception:
@@ -466,6 +509,8 @@ class IncidentRingBufferSupervisor:
                 continue
 
             w.consecutive_restarts = 0
+            w.next_restart_at = 0.0
+            w._tried_codecs = {w.codec}
 
     def run_forever(self) -> None:
         logger.info(
@@ -482,7 +527,6 @@ class IncidentRingBufferSupervisor:
             )
 
         last_refresh = 0.0
-        last_health = 0.0
         last_gc = 0.0
 
         while not self._shutdown.is_set():
@@ -498,8 +542,7 @@ class IncidentRingBufferSupervisor:
                     logger.info("Incident ring-buffer: no enabled RTSP cameras")
                 self._sync_workers(specs)
 
-            if self._recording_active and now - last_health >= _health_interval_sec():
-                last_health = now
+            if self._recording_active:
                 self._health_tick()
 
             if self._recording_active and now - last_gc >= _gc_interval_sec():
