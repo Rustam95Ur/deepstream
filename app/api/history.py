@@ -93,7 +93,7 @@ def _job_out(row: OutboundJobRow) -> OutboundJobOut:
 
 @router.get("/triggers", response_model=TriggerHistoryOut)
 def list_triggers(
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=10, ge=1, le=500),
     cursor: str = Query(default=""),
     since: datetime | None = Query(default=None),
     until: datetime | None = Query(default=None),
@@ -175,7 +175,7 @@ def post_trigger_resend(event_id: str) -> ResendOut:
 
 @router.get("/sends", response_model=SendHistoryOut)
 def list_sends(
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=10, ge=1, le=500),
     cursor: str = Query(default=""),
     since: datetime | None = Query(default=None),
     until: datetime | None = Query(default=None),
@@ -228,7 +228,7 @@ def list_sends(
 
 @router.get("/outbound", response_model=OutboundJobListOut)
 def list_outbound(
-    limit: int = Query(default=50, ge=1, le=500),
+    limit: int = Query(default=10, ge=1, le=500),
     cursor: str = Query(default=""),
     status: str = Query(default=""),
     event_id: str = Query(default=""),

@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 
-export const PAGE_SIZE = 25;
-export const HISTORY_PAGE_SIZE = 50;
+export const PAGE_SIZE = 10;
+export const HISTORY_PAGE_SIZE = 10;
 
 export function useCursorPage() {
   const cursor = ref("");

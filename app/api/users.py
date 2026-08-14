@@ -55,7 +55,7 @@ def get_users(
         after_email = cursor_str(payload, "k")
         after_id = cursor_str(payload, "id")
     paginated = limit is not None or payload is not None
-    page_size = (limit or 25) if paginated else None
+    page_size = (limit or 10) if paginated else None
     users, next_cursor = list_users(
         q=q,
         since=_aware(since),

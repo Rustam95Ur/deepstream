@@ -55,7 +55,7 @@ def list_cameras(
         after_id = cursor_id(payload)
         after_name = str(payload.get("k") or "") if "k" in payload else None
     paginated = limit is not None or after_id is not None
-    page_size = (limit or 25) if paginated else None
+    page_size = (limit or 10) if paginated else None
     filtered = bool(q.strip()) or enabled is not None or since is not None or until is not None
     next_cursor = None
     if paginated or filtered:
