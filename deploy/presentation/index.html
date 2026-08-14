@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nexus DeepStream. Презентация для заказчика</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --bg-2: #f5f6f8;
+      --ink: #12151c;
+      --muted: #5c6475;
+      --line: #e2e5ec;
+      --accent: #1b84ff;
+      --ok: #17c653;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+      --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+      --radius: 8px;
+      --header: 56px;
+      --z-chrome: 4;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100dvh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 18px;
+      line-height: 1.45;
+    }
+    button { font-family: inherit; }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+    }
+
+    .chrome {
+      position: fixed;
+      inset: 0 0 auto 0;
+      height: var(--header);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 1.25rem;
+      padding: 0 1.5rem;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+      z-index: var(--z-chrome);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .brand svg { display: block; color: var(--accent); }
+    .progress {
+      height: 3px;
+      background: var(--line);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress > i {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: var(--accent);
+      transition: width 280ms ease-out;
+    }
+    .chrome-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+    .chrome-meta button {
+      border: 1px solid var(--line);
+      background: var(--bg-2);
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 0.35rem 0.6rem;
+      cursor: pointer;
+    }
+    .chrome-meta button:hover,
+    .chrome-meta button:focus-visible {
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    .deck { min-height: 100dvh; padding-top: var(--header); }
+    .slide {
+      display: none;
+      min-height: calc(100dvh - var(--header));
+      padding: 2.2rem 4.5vw 3.2rem;
+    }
+    .slide.is-on { display: block; }
+    .slide-inner { max-width: 1100px; margin: 0 auto; }
+
+    h1, h2 {
+      margin: 0;
+      letter-spacing: -0.035em;
+      font-weight: 600;
+      text-wrap: balance;
+      line-height: 1.15;
+    }
+    h1 { font-size: clamp(2.1rem, 4.2vw, 3.2rem); }
+    h2 { font-size: clamp(1.5rem, 2.7vw, 2.15rem); max-width: 30ch; }
+    .lede {
+      margin: 0.75rem 0 0;
+      max-width: 54ch;
+      color: var(--muted);
+      font-size: 1.05rem;
+      text-wrap: pretty;
+    }
+    .hint {
+      margin-top: 1.5rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .cover {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 3rem;
+      align-items: end;
+      min-height: calc(100dvh - var(--header) - 5rem);
+    }
+    .cover-aside {
+      border: 1px solid var(--line);
+      background: var(--bg-2);
+      border-radius: var(--radius);
+      padding: 1.15rem 1.2rem;
+    }
+    .cover-aside dt {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin: 0 0 0.2rem;
+    }
+    .cover-aside dd {
+      margin: 0 0 0.9rem;
+      font-weight: 600;
+    }
+    .cover-aside dd:last-child { margin-bottom: 0; }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem 3rem;
+      margin-top: 1.5rem;
+    }
+    .facts { display: grid; gap: 1.2rem; }
+    .facts h3 {
+      margin: 0 0 0.3rem;
+      font-size: 1.05rem;
+    }
+    .facts p { margin: 0; color: var(--muted); max-width: 48ch; }
+
+    .steps {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1.4rem;
+      max-width: 46rem;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 2rem 1fr;
+      gap: 0.75rem;
+    }
+    .step i {
+      font-family: var(--mono);
+      font-style: normal;
+      font-size: 0.82rem;
+      color: var(--accent);
+      padding-top: 0.18rem;
+    }
+    .step b { font-weight: 600; }
+    .step p { margin: 0.2rem 0 0; color: var(--muted); }
+
+    .rack {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 0.7rem;
+      margin-top: 1.4rem;
+    }
+    .cell {
+      border: 1px solid var(--line);
+      background: var(--bg-2);
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem;
+    }
+    .cell.wide { grid-column: 1 / -1; }
+    .cell.accent {
+      background: color-mix(in srgb, var(--accent) 12%, var(--bg-2));
+      border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+    }
+    .cell.ok {
+      background: color-mix(in srgb, var(--ok) 9%, var(--bg-2));
+      border-color: color-mix(in srgb, var(--ok) 32%, var(--line));
+    }
+    .cell h3 { margin: 0 0 0.3rem; font-size: 1.02rem; }
+    .cell p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+    .trig {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.7rem;
+      margin-top: 1.3rem;
+    }
+
+    .stack {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1.4rem 2rem;
+      margin-top: 1.5rem;
+    }
+    .stack h3 {
+      margin: 0 0 0.5rem;
+      font-size: 0.78rem;
+      font-family: var(--mono);
+      font-weight: 500;
+      color: var(--accent);
+    }
+    .stack ul { margin: 0; padding: 0; list-style: none; }
+    .stack li {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.38rem 0;
+      border-top: 1px solid var(--line);
+      font-size: 0.95rem;
+    }
+    .stack li span { color: var(--muted); font-size: 0.82rem; }
+
+    .nav-float {
+      position: fixed;
+      right: 1.4rem;
+      bottom: 1.2rem;
+      display: flex;
+      gap: 0.4rem;
+      z-index: var(--z-chrome);
+    }
+    .nav-float button {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: var(--bg-2);
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 1.2rem;
+    }
+    .nav-float button:hover,
+    .nav-float button:focus-visible {
+      border-color: var(--accent);
+      outline: none;
+    }
+    .nav-float button:disabled { opacity: 0.35; cursor: default; }
+
+    @media (max-width: 900px) {
+      .cover, .split, .trig, .stack, .rack { grid-template-columns: 1fr; }
+      .slide { padding: 1.4rem 1.1rem 5.5rem; }
+      h2 { max-width: none; }
+      .chrome { padding: 0 0.9rem; gap: 0.7rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .progress > i { transition: none; }
+    }
+
+    @media print {
+      .chrome, .nav-float, .hint { display: none !important; }
+      .deck { padding: 0; }
+      .slide {
+        display: block !important;
+        min-height: auto;
+        page-break-after: always;
+        padding: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="sr-only" href="#slide-0">К содержимому</a>
+  <header class="chrome">
+    <a class="brand" href="#slide-0">
+      <svg height="22" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+        <rect x="2" y="10" width="10" height="22" rx="3" fill="currentColor" />
+        <rect x="15" y="4" width="10" height="32" rx="3" fill="#d5d8e0" />
+        <rect x="28" y="14" width="10" height="18" rx="3" fill="currentColor" />
+      </svg>
+      Nexus DeepStream
+    </a>
+    <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+    <div class="chrome-meta">
+      <span id="counter">01 / 12</span>
+      <button type="button" id="fs" aria-label="Полный экран">⛶</button>
+    </div>
+  </header>
+
+  <main class="deck" id="deck" tabindex="-1">
+    <section class="slide is-on" id="slide-0" data-title="Старт">
+      <div class="slide-inner cover">
+        <div>
+          <h1>Камеры, люди на кадре, ролик в Campus</h1>
+          <p class="lede">Система смотрит видео с камер, находит людей, вырезает короткий ролик и отправляет событие.</p>
+          <p class="hint">Стрелки или пробел. F: полный экран.</p>
+        </div>
+        <dl class="cover-aside">
+          <dt>Вход</dt>
+          <dd>Адрес камеры</dd>
+          <dt>Видеокарта</dt>
+          <dd>Разбор кадра</dd>
+          <dt>Выход</dt>
+          <dd>Событие и ролик</dd>
+          <dt>Куда</dt>
+          <dd>В Campus</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-1" data-title="Две системы">
+      <div class="slide-inner">
+        <h2>Campus ведёт учёт. Эта программа смотрит картинку.</h2>
+        <div class="split">
+          <div class="facts">
+            <div>
+              <h3>Campus</h3>
+              <p>Общая система: список камер, журнал происшествий, работа оператора с событием.</p>
+            </div>
+            <div>
+              <h3>Эта нода</h3>
+              <p>Отдельный компьютер с видеокартой. Подключается к камерам, ищет людей на кадре, режет ролик, присылает событие.</p>
+            </div>
+          </div>
+          <div class="facts">
+            <div>
+              <h3>Зачем две программы</h3>
+              <p>Разбор видео нагружает видеокарту. Campus от этого не зависит. Если Campus отвечает медленно, поиск людей на кадре не останавливается.</p>
+            </div>
+            <div>
+              <h3>Как связаны</h3>
+              <p>Campus присылает камеру (адрес потока). Нода присылает обратно: что случилось, когда, и ссылку на ролик.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-2" data-title="Модули">
+      <div class="slide-inner">
+        <h2>Из чего состоит нода</h2>
+        <div class="rack">
+          <article class="cell">
+            <h3>Экран настройки</h3>
+            <p>Сайт: камеры, пороги, история. В поставке его отдаёт nginx.</p>
+          </article>
+          <article class="cell">
+            <h3>API</h3>
+            <p>Принимает камеры от Campus, хранит настройки, отдаёт историю. Видеокарту не трогает.</p>
+          </article>
+          <article class="cell ok">
+            <h3>Видео</h3>
+            <p>На видеокарте модель ставит рамки на объекты. Людей из них отбирает видеопроцесс. Кольцо и ролик собираются рядом, не на GPU.</p>
+          </article>
+          <article class="cell">
+            <h3>База</h3>
+            <p>Postgres: камеры, пользователи, события, очередь отправок.</p>
+          </article>
+          <article class="cell">
+            <h3>Файлы роликов</h3>
+            <p>MinIO. Каждый ролик лежит как файл: дата, камера, час, номер события.</p>
+          </article>
+          <article class="cell">
+            <h3>Общая папка</h3>
+            <p>Настройки и куски кольца на диске. Список камер в базе. Сменили камеру: видеопроцесс перезапускает разбор.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-3" data-title="Камера">
+      <div class="slide-inner">
+        <h2>Как появляется камера</h2>
+        <div class="steps">
+          <div class="step">
+            <i>1</i>
+            <div>
+              <b>Камеру заводят в Campus</b>
+              <p>Имя, адрес потока (rtsp://...), включена или нет.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>2</i>
+            <div>
+              <b>Campus присылает это на ноду</b>
+              <p>Обычный HTTP-запрос. Тот же список нода отдаёт обратно, если Campus хочет свериться.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>3</i>
+            <div>
+              <b>Нода подключается к потоку</b>
+              <p>Если камера включена. Выключили: смотреть и писать перестаёт.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>4</i>
+            <div>
+              <b>Можно добавить камеру и с экрана ноды</b>
+              <p>Для настройки и проверки, без ожидания Campus.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-4" data-title="Два дела">
+      <div class="slide-inner">
+        <h2>Пока камера включена, идут два дела сразу</h2>
+        <div class="split">
+          <div class="facts">
+            <div>
+              <h3>1. Анализ кадра</h3>
+              <p>Поток идёт в DeepStream на видеокарте. YOLO11n ставит рамки на объекты. Нода оставляет только людей выше порога уверенности.</p>
+            </div>
+            <div>
+              <h3>Это не тормозит запись</h3>
+              <p>Сколько людей, близко ли, наложились ли рамки: считает процессор. Отправка в сеть и запись в базу кадр не ждут.</p>
+            </div>
+          </div>
+          <div class="facts">
+            <div>
+              <h3>2. Кольцо записи</h3>
+              <p>Поток пишется кусками примерно по 3 секунды. Хранится около полутора минут, это не архив. Нужно, чтобы потом вырезать «было до» и «стало после».</p>
+            </div>
+            <div>
+              <h3>Когда кольцо не пишется</h3>
+              <p>Только обычный RTSP. Нет картинки: писать нечего. Событие «тишина потока» ролика не получит.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-5" data-title="Решение">
+      <div class="slide-inner">
+        <h2>Как нода решает, что это событие</h2>
+        <div class="steps">
+          <div class="step">
+            <i>1</i>
+            <div>
+              <b>Оставляет только людей</b>
+              <p>С кадра убираются не-люди и слабые рамки. Правила дальше смотрят только людей.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>2</i>
+            <div>
+              <b>Условие должно продержаться</b>
+              <p>Один кадр «мелькнуло» событием не станет. Сколько держать: настраивается. У присутствия это секунды, у схождения и пересечения рамок обычно меньше секунды.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>3</i>
+            <div>
+              <b>Потом пауза</b>
+              <p>Та же камера и тот же тип события не уйдут снова сразу. Иначе в Campus полетит пачка одинаковых сообщений.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>4</i>
+            <div>
+              <b>Тип можно выключить</b>
+              <p>На всю ноду или только на одну камеру. Выключенное не пишется и не отправляется.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-6" data-title="События">
+      <div class="slide-inner">
+        <h2>Четыре правила</h2>
+        <div class="trig">
+          <article class="cell accent">
+            <h3>Присутствие</h3>
+            <p>В кадре одновременно не меньше N человек, и так держится заданное время. По умолчанию достаточно одного человека.</p>
+          </article>
+          <article class="cell">
+            <h3>Схождение</h3>
+            <p>Минимум двое. Они достаточно близко: расстояние считается относительно высоты рамки. Так должно продержаться заданное время. Идти друг к другу не обязательно.</p>
+          </article>
+          <article class="cell">
+            <h3>Пересечение рамок</h3>
+            <p>Две рамки людей сильно наложились друг на друга и так держатся заданное время. Это пересечение на картинке, не обязательно касание в жизни.</p>
+          </article>
+          <article class="cell">
+            <h3>Тишина потока</h3>
+            <p>Кадры перестали приходить. Камера зависла или оборвался поток. Это ошибка, не происшествие. Ролик не режется: брать не из чего.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-7" data-title="Ролик">
+      <div class="slide-inner">
+        <h2>Как собирается ролик</h2>
+        <div class="steps">
+          <div class="step">
+            <i>1</i>
+            <div>
+              <b>Событие случилось в момент T</b>
+              <p>Нода не режет сразу. Ждёт ещё время после события (по умолчанию 15 секунд), чтобы в ролик попало «что было дальше».</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>2</i>
+            <div>
+              <b>Берёт куски из кольца</b>
+              <p>По умолчанию 5 секунд до события и 15 после. Куски склеиваются в один файл mp4.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>3</i>
+            <div>
+              <b>Файл кладётся в хранилище</b>
+              <p>Папка: дата / камера / час / номер события. В сообщении для Campus всегда есть ссылка. Нет ролика: ссылка пустая, но поле на месте.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-8" data-title="Отправка">
+      <div class="slide-inner">
+        <h2>Как событие доходит до Campus</h2>
+        <div class="steps">
+          <div class="step">
+            <i>1</i>
+            <div>
+              <b>Собирается сообщение</b>
+              <p>Какая камера, тип, время, детали (сколько людей или сколько молчит поток), ссылка на ролик, номер ноды.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>2</i>
+            <div>
+              <b>Пишется в историю на ноде</b>
+              <p>Потом можно открыть ролик, посмотреть, ушло ли сообщение.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>3</i>
+            <div>
+              <b>Отправка на все включённые адреса</b>
+              <p>Обычно это Campus. Можно указать несколько адресов.</p>
+            </div>
+          </div>
+          <div class="step">
+            <i>4</i>
+            <div>
+              <b>Если не приняли</b>
+              <p>Нода ждёт и пробует снова. Не вышло: кладёт в «не доставлено». Из истории можно отправить ещё раз.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-9" data-title="Консоль">
+      <div class="slide-inner">
+        <h2>Что на экране настройки</h2>
+        <div class="split">
+          <div class="facts">
+            <div>
+              <h3>Обзор</h3>
+              <p>Идёт ли разбор видео, пишется ли кольцо, последние события.</p>
+            </div>
+            <div>
+              <h3>Камеры</h3>
+              <p>Список потоков, включение, свои правила на камеру.</p>
+            </div>
+            <div>
+              <h3>Связь</h3>
+              <p>Куда слать события. Логин для входящих запросов от Campus.</p>
+            </div>
+          </div>
+          <div class="facts">
+            <div>
+              <h3>Триггеры</h3>
+              <p>Какие правила включены. Сколько людей, сколько секунд, длина ролика.</p>
+            </div>
+            <div>
+              <h3>История</h3>
+              <p>Сработки, ролик, повторная отправка, если Campus не принял.</p>
+            </div>
+            <div>
+              <h3>Пользователи</h3>
+              <p>Кто входит на экран ноды по email. Это не логин Campus.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-10" data-title="Стек">
+      <div class="slide-inner">
+        <h2>Библиотеки и программы</h2>
+        <div class="stack">
+          <div>
+            <h3>Управление</h3>
+            <ul>
+              <li>FastAPI <span>API</span></li>
+              <li>Uvicorn <span>сервер</span></li>
+              <li>Pydantic <span>проверка данных</span></li>
+              <li>SQLAlchemy <span>база</span></li>
+              <li>Alembic <span>миграции</span></li>
+              <li>psycopg 3 <span>Postgres</span></li>
+              <li>boto3 <span>файлы MinIO</span></li>
+            </ul>
+          </div>
+          <div>
+            <h3>Видео</h3>
+            <ul>
+              <li>NVIDIA DeepStream <span>прогон модели</span></li>
+              <li>pyservicemaker <span>Python</span></li>
+              <li>GStreamer <span>кольцо записи</span></li>
+              <li>YOLO11n <span>рамки на кадре</span></li>
+              <li>ffmpeg <span>склейка ролика</span></li>
+            </ul>
+          </div>
+          <div>
+            <h3>Экран и серверы</h3>
+            <ul>
+              <li>Vue 3 <span>консоль</span></li>
+              <li>Vite + TypeScript <span>сборка</span></li>
+              <li>Postgres 16 <span>данные</span></li>
+              <li>PgBouncer <span>пул к базе</span></li>
+              <li>MinIO <span>ролики</span></li>
+              <li>nginx + Docker <span>запуск</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" id="slide-11" data-title="Несколько нод">
+      <div class="slide-inner">
+        <h2>Можно поставить несколько коробок</h2>
+        <div class="split">
+          <div class="facts">
+            <div>
+              <h3>Зачем</h3>
+              <p>Две видеокарты, два здания, запас. У каждой ноды свой номер, например ds-1 и ds-2.</p>
+            </div>
+            <div>
+              <h3>Куда уходит событие</h3>
+              <p>Обе шлют в один и тот же Campus. Campus сам решает, на какую ноду отдать камеру.</p>
+            </div>
+          </div>
+          <div class="facts">
+            <div>
+              <h3>Одна камера: одна нода</h3>
+              <p>Campus не должен отдавать одну камеру двум нодам. Иначе одно и то же событие приедет дважды.</p>
+            </div>
+            <div>
+              <h3>Если видеокарты нет</h3>
+              <p>Консоль и API открываются. Поиск людей на кадре не идёт, пока не запущен видеопроцесс с DeepStream.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="nav-float">
+    <button type="button" id="prev" aria-label="Предыдущий слайд">‹</button>
+    <button type="button" id="next" aria-label="Следующий слайд">›</button>
+  </div>
+  <div class="sr-only" id="live" aria-live="polite"></div>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    const bar = document.getElementById("bar");
+    const counter = document.getElementById("counter");
+    const live = document.getElementById("live");
+    const prevBtn = document.getElementById("prev");
+    const nextBtn = document.getElementById("next");
+    const total = slides.length;
+    let index = 0;
+
+    function pad(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    function go(next) {
+      index = Math.max(0, Math.min(total - 1, next));
+      slides.forEach((slide, i) => slide.classList.toggle("is-on", i === index));
+      bar.style.width = ((index + 1) / total) * 100 + "%";
+      counter.textContent = pad(index + 1) + " / " + pad(total);
+      prevBtn.disabled = index === 0;
+      nextBtn.disabled = index === total - 1;
+      const title = slides[index].dataset.title || "";
+      live.textContent = "Слайд " + (index + 1) + ". " + title;
+      history.replaceState(null, "", "#slide-" + index);
+    }
+
+    function parseHash() {
+      const m = location.hash.match(/slide-(\d+)/);
+      return m ? Number(m[1]) : 0;
+    }
+
+    prevBtn.addEventListener("click", () => go(index - 1));
+    nextBtn.addEventListener("click", () => go(index + 1));
+    document.getElementById("fs").addEventListener("click", async () => {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
+      if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(e.key)) {
+        e.preventDefault();
+        go(index + 1);
+      }
+      if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(e.key)) {
+        e.preventDefault();
+        go(index - 1);
+      }
+      if (e.key === "Home") { e.preventDefault(); go(0); }
+      if (e.key === "End") { e.preventDefault(); go(total - 1); }
+      if (e.key === "f" || e.key === "F") document.getElementById("fs").click();
+    });
+
+    let touchX = null;
+    document.addEventListener("touchstart", (e) => { touchX = e.changedTouches[0].screenX; }, { passive: true });
+    document.addEventListener("touchend", (e) => {
+      if (touchX == null) return;
+      const dx = e.changedTouches[0].screenX - touchX;
+      if (dx < -50) go(index + 1);
+      if (dx > 50) go(index - 1);
+      touchX = null;
+    });
+
+    window.addEventListener("hashchange", () => go(parseHash()));
+    go(parseHash());
+  </script>
+</body>
+</html>

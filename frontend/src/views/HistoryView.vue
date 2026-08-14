@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
+import DateRangeField from "../components/DateRangeField.vue";
 import Field from "../components/Field.vue";
 import Pager from "../components/Pager.vue";
 import { ApiError, api } from "../api";
@@ -260,8 +261,7 @@ onMounted(() => {
         <p class="lede">Запрос уходит на сервер. Пустые поля не учитываются.</p>
       </div>
       <div class="card-body filters-row filters-many">
-        <Field id="hist-from" v-model="filters.from" label="С даты" type="date" />
-        <Field id="hist-to" v-model="filters.to" label="До даты" type="date" />
+        <DateRangeField id="hist-range" v-model:from="filters.from" v-model:to="filters.to" label="Период" />
         <div class="ig">
           <label class="form-label" for="hist-camera">Камера</label>
           <div class="form-floating">

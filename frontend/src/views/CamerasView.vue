@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import DateRangeField from "../components/DateRangeField.vue";
 import Field from "../components/Field.vue";
 import Pager from "../components/Pager.vue";
 import SwitchField from "../components/SwitchField.vue";
@@ -138,8 +139,7 @@ onMounted(() => {
             </select>
           </div>
         </div>
-        <Field id="cam-from" v-model="filters.from" label="С даты" type="date" />
-        <Field id="cam-to" v-model="filters.to" label="До даты" type="date" />
+        <DateRangeField id="cam-range" v-model:from="filters.from" v-model:to="filters.to" label="Период" />
       </div>
       <div class="card-foot end">
         <div class="row">

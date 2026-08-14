@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import DateRangeField from "../components/DateRangeField.vue";
 import Field from "../components/Field.vue";
 import Pager from "../components/Pager.vue";
 import { ApiError, api } from "../api";
@@ -103,8 +104,7 @@ onMounted(() => {
       </div>
       <div class="card-body form-grid">
         <Field id="user-q" v-model="filters.q" label="Поиск" />
-        <Field id="user-from" v-model="filters.from" label="С даты" type="date" />
-        <Field id="user-to" v-model="filters.to" label="До даты" type="date" />
+        <DateRangeField id="user-range" v-model:from="filters.from" v-model:to="filters.to" label="Период" />
       </div>
       <div class="card-foot end">
         <div class="row">
