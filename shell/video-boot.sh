@@ -12,6 +12,10 @@ export DEEPSTREAM_WORK_DIR="${DEEPSTREAM_WORK_DIR:-/tmp/nexus_deepstream}"
 export DEEPSTREAM_DEBUG_DIR="${DEEPSTREAM_DEBUG_DIR:-${NEXUS_DS_DATA_DIR}/debug}"
 export CUDA_VER="${CUDA_VER:-13.1}"
 
+# GStreamer/GLib opens a pipe per source; 128 RTSP hits default 1024 nofile.
+ulimit -n 1048576 2>/dev/null || ulimit -n 65536 2>/dev/null || true
+echo "nofile=$(ulimit -n)"
+
 if command -v python3 >/dev/null 2>&1; then
   PY=python3
 elif command -v python >/dev/null 2>&1; then
