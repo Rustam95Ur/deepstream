@@ -55,8 +55,11 @@ class CameraTriggerState:
     saw_frame: bool = False
     last_video_s: float | None = None
     presence_since: float | None = None
+    presence_last_hit: float | None = None
     converge_since: float | None = None
+    converge_last_hit: float | None = None
     vif_since: float | None = None
+    vif_last_hit: float | None = None
     last_fire: dict[str, float] = field(default_factory=dict)
     prev_centers: dict[int, tuple[float, float, float]] = field(default_factory=dict)
 
@@ -131,15 +134,31 @@ class TriggerEngine:
             self._eval_convergence(st, people, now)
         if self._allows(st.camera_id, "vif"):
             self._eval_vif(st, people, now)
-        st.prev_centers = {d.track_id: (d.cx, d.cy, now) for d in people}
+        if people:
+            st.prev_centers = {d.track_id: (d.cx, d.cy, now) for d in people}
+
+    def _still_held(self, last_hit: float | None, now: float, hold_s: float) -> bool:
+        return last_hit is not None and (now - last_hit) < hold_s
+
+    def _miss_hold_s(self, sustain_s: float) -> float:
+        # nvinfer `interval` skips batches; those frames have people=0 and
+        # used to reset sustain before it could ever reach presence_sustain_s.
+        return max(0.4, min(2.0, float(sustain_s) * 0.5))
 
     def _eval_presence(
         self, st: CameraTriggerState, people: list[Detection], now: float
     ) -> None:
         need = self.trigger.presence_min_people
         if len(people) >= need:
+            st.presence_last_hit = now
             if st.presence_since is None:
                 st.presence_since = now
+                logger.info(
+                    "presence arm camera=%s people=%s need=%.1fs",
+                    st.camera_id,
+                    len(people),
+                    self.trigger.presence_sustain_s,
+                )
             elif (now - st.presence_since) >= self.trigger.presence_sustain_s:
                 if st.cooled_down("presence", self.trigger.cooldown_s, now):
                     self._emit(
@@ -148,14 +167,21 @@ class TriggerEngine:
                         evidence={"people": len(people)},
                     )
                 st.presence_since = now
-        else:
-            st.presence_since = None
+            return
+        if self._still_held(
+            st.presence_last_hit, now, self._miss_hold_s(self.trigger.presence_sustain_s)
+        ):
+            return
+        st.presence_since = None
 
     def _eval_convergence(
         self, st: CameraTriggerState, people: list[Detection], now: float
     ) -> None:
         if len(people) < self.trigger.min_tracks:
-            st.converge_since = None
+            if not self._still_held(
+                st.converge_last_hit, now, self._miss_hold_s(self.trigger.sustain_s)
+            ):
+                st.converge_since = None
             return
 
         close = False
@@ -179,6 +205,7 @@ class TriggerEngine:
                             approaching = True
 
         if close and (approaching or self.trigger.mode == "convergence"):
+            st.converge_last_hit = now
             if st.converge_since is None:
                 st.converge_since = now
             elif (now - st.converge_since) >= self.trigger.sustain_s:
@@ -193,20 +220,26 @@ class TriggerEngine:
                         },
                     )
                 st.converge_since = now
-        else:
+        elif not self._still_held(
+            st.converge_last_hit, now, self._miss_hold_s(self.trigger.sustain_s)
+        ):
             st.converge_since = None
 
     def _eval_vif(
         self, st: CameraTriggerState, people: list[Detection], now: float
     ) -> None:
         if len(people) < 2:
-            st.vif_since = None
+            if not self._still_held(
+                st.vif_last_hit, now, self._miss_hold_s(self.trigger.vif_sustain_s)
+            ):
+                st.vif_since = None
             return
         best_iou = 0.0
         for i in range(len(people)):
             for j in range(i + 1, len(people)):
                 best_iou = max(best_iou, people[i].iou(people[j]))
         if best_iou >= self.trigger.vif_iou_thresh:
+            st.vif_last_hit = now
             if st.vif_since is None:
                 st.vif_since = now
             elif (now - st.vif_since) >= self.trigger.vif_sustain_s:
@@ -217,7 +250,9 @@ class TriggerEngine:
                         evidence={"people": len(people), "iou": round(best_iou, 3)},
                     )
                 st.vif_since = now
-        else:
+        elif not self._still_held(
+            st.vif_last_hit, now, self._miss_hold_s(self.trigger.vif_sustain_s)
+        ):
             st.vif_since = None
 
     def _emit(

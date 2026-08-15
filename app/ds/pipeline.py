@@ -185,6 +185,9 @@ def write_pgie_config(
             f"YOLO custom parser missing: {custom_lib}. Run models/yolo11n/prepare.sh"
         )
 
+    # nvinfer `interval` = batches to SKIP (0 = every frame). Node setting is
+    # "every Nth frame" (1 = every frame), so skip = N - 1.
+    skip = max(0, int(infer_interval) - 1)
     text = f"""[property]
 gpu-id=0
 net-scale-factor=0.0039215697906911373
@@ -195,7 +198,7 @@ labelfile-path={labels.as_posix()}
 batch-size={batch_size}
 network-mode=2
 num-detected-classes=80
-interval={infer_interval}
+interval={skip}
 gie-unique-id=1
 process-mode=1
 network-type=0
@@ -273,6 +276,7 @@ def run_pipeline(
     sink: Any,
     *,
     exit_on_eos: bool = False,
+    interrupt: threading.Event | None = None,
 ) -> None:
     from pyservicemaker import Flow, Pipeline, RenderMode
 
@@ -392,6 +396,19 @@ def run_pipeline(
             target=_eos_idle_watchdog, name="eos-idle", daemon=True
         )
         eos_wd.start()
+
+    def _interrupt_watch() -> None:
+        if interrupt is None:
+            return
+        while not stop.wait(0.4):
+            if interrupt.is_set():
+                _stop_pipeline("reload")
+                return
+
+    if interrupt is not None:
+        threading.Thread(
+            target=_interrupt_watch, name="ds-interrupt", daemon=True
+        ).start()
 
     try:
         flow()

@@ -382,6 +382,10 @@ input:focus-visible,
 .dropdown-item:hover { background: var(--primary-light); color: var(--primary); }
 
 .app-sidebar {
+  position: sticky;
+  top: var(--header);
+  align-self: start;
+  height: calc(100dvh - var(--header));
   background: var(--surface);
   padding: 2rem 1.6rem 2.4rem;
   overflow: auto;

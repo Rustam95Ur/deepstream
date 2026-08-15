@@ -100,6 +100,15 @@ Stop: `docker compose -f docker-compose.rtsp-test.yml down`
 
 Publisher knobs: `RTSP_TEST_SIZE` (default `1280x720`), `RTSP_TEST_FPS` (default `25`). Extra path `cam2` is reserved in `deploy/rtsp-test/mediamtx.yml` for a second ffmpeg if you need it.
 
+Register two test cameras (`rtsp_test_1`, `rtsp_test_2`) on that stream:
+
+```bash
+python deploy/rtsp-test/seed-cameras.py
+# GPU stack: python deploy/rtsp-test/seed-cameras.py --rtsp-url rtsp://mediamtx:8554/cam1
+```
+
+If the console already has users, pass `--login` / `--password` (webhook Basic). First boot with an empty users table needs no auth.
+
 Postgres stores cameras, users, webhooks, trigger history, and the outbound job queue. Schema is applied with Alembic on **API** startup. `NEXUS_DS_DATABASE_URL` is required. There is no `cameras.json`.
 
 ## Production stack

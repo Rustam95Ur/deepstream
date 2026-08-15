@@ -86,7 +86,7 @@ class PipelineManager:
         self._reload_requested.set()
         t = self._thread
         if t and t.is_alive():
-            t.join(timeout=5.0)
+            t.join(timeout=25.0)
         self._running = False
         return self.status()
 
@@ -137,10 +137,13 @@ class PipelineManager:
                     settings.node_id,
                     len(cameras),
                 )
-                # run_pipeline blocks until crash/EOS; we interrupt via process restart
-                # on reload by checking flag between reconnects.
                 while not self._stop.is_set() and not self._reload_requested.is_set():
-                    run_pipeline(cfg, cfg.enabled_cameras, sink)
+                    run_pipeline(
+                        cfg,
+                        cfg.enabled_cameras,
+                        sink,
+                        interrupt=self._reload_requested,
+                    )
                     if self._stop.is_set() or self._reload_requested.is_set():
                         break
                     logger.warning(
