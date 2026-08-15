@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 import threading
 import time
@@ -25,6 +26,13 @@ logger = logging.getLogger(__name__)
 _LOCK_TTL_SEC = 60 * 30
 _event_locks: dict[str, float] = {}
 _event_locks_mu = threading.Lock()
+
+
+def _ffmpeg_bin() -> str:
+    for candidate in ("/usr/local/bin/ffmpeg", shutil.which("ffmpeg") or ""):
+        if candidate and Path(candidate).is_file():
+            return candidate
+    return "ffmpeg"
 
 
 def _acquire_event_lock(event_id: str) -> bool:
@@ -100,7 +108,7 @@ def concat_segments(segs: list[tuple[Path, float]], out_path: Path) -> bool:
             for seg_path, _mtime in segs:
                 f.write(f"file '{seg_path.resolve().as_posix()}'\n")
         cmd = [
-            "ffmpeg",
+            _ffmpeg_bin(),
             "-y",
             "-f",
             "concat",
@@ -142,7 +150,7 @@ def cut_clip_from_source_video(
     duration = max(0.1, float(pre_s) + float(post_s))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg",
+        _ffmpeg_bin(),
         "-y",
         "-ss",
         f"{start:.3f}",

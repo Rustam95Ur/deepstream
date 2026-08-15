@@ -6,6 +6,7 @@ import json
 import logging
 import shutil
 import subprocess
+from pathlib import Path
 from urllib.parse import quote, unquote
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,10 @@ def sanitize_rtsp_url(rtsp: str) -> str:
 
 
 def _ffprobe() -> str | None:
-    return shutil.which("ffprobe")
+    for candidate in ("/usr/local/bin/ffprobe", shutil.which("ffprobe") or ""):
+        if candidate and Path(candidate).is_file():
+            return candidate
+    return None
 
 
 def probe_codec(rtsp_url: str, *, timeout_sec: float = 6.0) -> CodecName | None:

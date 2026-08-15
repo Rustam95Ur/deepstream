@@ -13,17 +13,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DEEPSTREAM_WORK_DIR=/tmp/nexus_deepstream \
     DEEPSTREAM_DEBUG_DIR=/data/nexus_deepstream/debug \
     CUDA_VER=13.1 \
-    PYTHONPATH=/opt/nexus_deepstream
+    PYTHONPATH=/opt/nexus_deepstream \
+    PATH="/usr/local/bin:${PATH}"
 
 WORKDIR /opt/nexus_deepstream
 
-# ffmpeg without recommends drops libvpx → "error while loading shared libraries: libvpx.so.9"
+# NGC DeepStream ships a broken ffmpeg (missing libvpx.so.9). Apt does not replace it.
+COPY --from=mwader/static-ffmpeg:7.1 /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=mwader/static-ffmpeg:7.1 /ffprobe /usr/local/bin/ffprobe
+
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       git wget ca-certificates build-essential python3-gi python3-gst-1.0 \
       gstreamer1.0-tools \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg \
-    && ffmpeg -hide_banner -version \
+    && chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
+    && /usr/local/bin/ffmpeg -hide_banner -version \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml poetry.lock /opt/nexus_deepstream/
