@@ -264,14 +264,16 @@ def _build_clip_locked(
         result["segments"] = 1
         return result
 
-    out_dir = camera_segment_dir(cam.name or camera_id)
-    if not out_dir.is_dir():
+    ring = _ring_for_camera(cam, cameras)
+    if ring is None:
         result["error"] = (
-            f"segment dir missing: {out_dir} (is incident ring-buffer running?)"
+            f"segment dir missing: {camera_segment_dir(cam.name or camera_id)} "
+            "(is incident ring-buffer running?)"
         )
         logger.warning("incident clip: %s", result["error"])
         _release_event_lock(event_id)
         return result
+    out_dir, prefix = ring
 
     trigger_time = _parse_trigger_time(payload.get("trigger_time"))
     trigger_epoch = (
@@ -331,6 +333,36 @@ def _build_clip_locked(
         len(segs),
     )
     return result
+
+
+def _ring_for_camera(
+    cam: CameraConfig,
+    cameras: dict[str, CameraConfig],
+) -> tuple[Path, str] | None:
+    """Segment dir + filename prefix. Shared RTSP uses the camera that is actually recording."""
+    own_prefix = safe_camera_dirname(cam.name or cam.camera_id)
+    own_dir = camera_segment_dir(cam.name or cam.camera_id)
+    if own_dir.is_dir():
+        return own_dir, own_prefix
+
+    uri = (cam.main_uri or "").strip().lower()
+    if not uri:
+        return None
+    for other in cameras.values():
+        if other.camera_id == cam.camera_id:
+            continue
+        if (other.main_uri or "").strip().lower() != uri:
+            continue
+        alt_prefix = safe_camera_dirname(other.name or other.camera_id)
+        alt_dir = camera_segment_dir(other.name or other.camera_id)
+        if alt_dir.is_dir():
+            logger.info(
+                "incident clip: camera=%s has no ring; using %s (same RTSP)",
+                cam.camera_id,
+                other.camera_id,
+            )
+            return alt_dir, alt_prefix
+    return None
 
 
 def _as_float(value: Any, default: float) -> float:
