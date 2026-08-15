@@ -45,7 +45,7 @@ class RecordConfig:
 
 @dataclass(slots=True)
 class PipelineConfig:
-    infer_interval: int = 1
+    infer_interval: int = 2
     conf_threshold: float = 0.25
     live_source: bool = True
     reconnect_s: float = 10.0
@@ -117,7 +117,7 @@ def app_config_from_dict(raw: dict[str, Any]) -> AppConfig:
         infer_interval=int(
             pipe_raw["infer_interval"]
             if pipe_raw.get("infer_interval") is not None
-            else 1
+            else 2
         ),
         conf_threshold=float(pipe_raw.get("conf_threshold") or 0.25),
         live_source=bool(pipe_raw.get("live_source", True)),

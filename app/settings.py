@@ -48,7 +48,7 @@ class NodeSettings(BaseModel):
     vif_sustain_s: float = 0.3
     clip_pre_s: float = 5.0
     clip_post_s: float = 15.0
-    infer_interval: int = 1
+    infer_interval: int = 2
     conf_threshold: float = 0.25
     reconnect_s: float = 10.0
     stream_silent_s: float = 30.0
