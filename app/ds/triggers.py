@@ -141,9 +141,12 @@ class TriggerEngine:
         return last_hit is not None and (now - last_hit) < hold_s
 
     def _miss_hold_s(self, sustain_s: float) -> float:
-        # nvinfer `interval` skips batches; those frames have people=0 and
-        # used to reset sustain before it could ever reach presence_sustain_s.
-        return max(0.4, min(2.0, float(sustain_s) * 0.5))
+        # nvinfer skip frames have people=0. Hold only those batches plus a
+        # couple of detector misses — not 0.4–2s of empty hallway.
+        skip = max(0, int(self.app_cfg.pipeline.infer_interval) - 1)
+        hold = (skip + 2) / 25.0
+        cap = max(0.0, float(sustain_s) * 0.25)
+        return min(hold, cap) if cap > 0 else hold
 
     def _eval_presence(
         self, st: CameraTriggerState, people: list[Detection], now: float
@@ -164,7 +167,11 @@ class TriggerEngine:
                     self._emit(
                         st,
                         trigger_type="presence",
-                        evidence={"people": len(people)},
+                        evidence={
+                            "people": len(people),
+                            "max_conf": round(max(d.conf for d in people), 3),
+                            "max_h": round(max(d.h for d in people), 1),
+                        },
                     )
                 st.presence_since = now
             return
