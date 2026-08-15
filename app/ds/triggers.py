@@ -13,6 +13,14 @@ from app.ds.payload import build_payload
 
 logger = logging.getLogger(__name__)
 
+# Life-size cutouts / wall decals sit still. After this age they are furniture.
+_STATIC_AGE_S = 5.0
+_STICKY_TTL_S = 20.0
+_STATIC_IOU = 0.4
+_MOVE_BH = 0.2
+# Do not fire person triggers until background boxes have been learned.
+_WARMUP_S = 8.0
+
 
 @dataclass(slots=True)
 class Detection:
@@ -48,12 +56,23 @@ class Detection:
         return dist / scale
 
 
+@dataclass(slots=True)
+class StickyBox:
+    cx: float
+    cy: float
+    w: float
+    h: float
+    first_ts: float
+    last_ts: float
+
+
 @dataclass
 class CameraTriggerState:
     camera_id: str
     last_frame_ts: float = field(default_factory=time.monotonic)
     saw_frame: bool = False
     last_video_s: float | None = None
+    warmup_from: float | None = None
     presence_since: float | None = None
     presence_last_hit: float | None = None
     converge_since: float | None = None
@@ -62,6 +81,7 @@ class CameraTriggerState:
     vif_last_hit: float | None = None
     last_fire: dict[str, float] = field(default_factory=dict)
     prev_centers: dict[int, tuple[float, float, float]] = field(default_factory=dict)
+    sticky: list[StickyBox] = field(default_factory=list)
 
     def cooled_down(self, trigger_type: str, cooldown_s: float, now: float) -> bool:
         last = self.last_fire.get(trigger_type)
@@ -95,8 +115,11 @@ class TriggerEngine:
     def note_frame(self, pad_index: int, video_s: float | None = None) -> None:
         st = self.by_pad.get(pad_index)
         if st:
-            st.last_frame_ts = time.monotonic()
+            now = time.monotonic()
+            st.last_frame_ts = now
             st.saw_frame = True
+            if st.warmup_from is None:
+                st.warmup_from = now
             if video_s is not None and video_s >= 0:
                 st.last_video_s = float(video_s)
 
@@ -127,15 +150,82 @@ class TriggerEngine:
         now = time.monotonic()
         st.last_frame_ts = now
         st.saw_frame = True
-        people = [d for d in detections if d.h > 0 and d.w > 0]
+        if st.warmup_from is None:
+            st.warmup_from = now
+        raw = [d for d in detections if d.h > 0 and d.w > 0]
+        warming = (now - st.warmup_from) < _WARMUP_S
+        people = self._live_people(st, raw, now, force_static=warming)
+        if warming:
+            return
         if self._allows(st.camera_id, "presence"):
-            self._eval_presence(st, people, now)
+            self._eval_presence(st, people, now, raw_n=len(raw))
         if self._allows(st.camera_id, "convergence"):
             self._eval_convergence(st, people, now)
         if self._allows(st.camera_id, "vif"):
             self._eval_vif(st, people, now)
         if people:
             st.prev_centers = {d.track_id: (d.cx, d.cy, now) for d in people}
+
+    def _live_people(
+        self,
+        st: CameraTriggerState,
+        people: list[Detection],
+        now: float,
+        *,
+        force_static: bool = False,
+    ) -> list[Detection]:
+        """Drop boxes that have sat still (cutouts, posters, plants)."""
+        unused = list(range(len(st.sticky)))
+        live: list[Detection] = []
+        seeded_ts = now - _STATIC_AGE_S
+        for det in people:
+            best_i = -1
+            best_iou = 0.0
+            for i in unused:
+                box = st.sticky[i]
+                iou = det.iou(
+                    Detection(
+                        track_id=-1,
+                        cx=box.cx,
+                        cy=box.cy,
+                        w=box.w,
+                        h=box.h,
+                        conf=0.0,
+                    )
+                )
+                if iou > best_iou:
+                    best_iou = iou
+                    best_i = i
+            if best_i >= 0 and best_iou >= _STATIC_IOU:
+                box = st.sticky[best_i]
+                unused.remove(best_i)
+                dist = math.hypot(det.cx - box.cx, det.cy - box.cy)
+                moved = dist > _MOVE_BH * max(det.bh, box.h, 1.0)
+                box.last_ts = now
+                if moved:
+                    box.cx, box.cy, box.w, box.h = det.cx, det.cy, det.w, det.h
+                    box.first_ts = seeded_ts if force_static else now
+                    if not force_static:
+                        live.append(det)
+                elif force_static:
+                    box.first_ts = min(box.first_ts, seeded_ts)
+                elif (now - box.first_ts) < _STATIC_AGE_S:
+                    live.append(det)
+            else:
+                st.sticky.append(
+                    StickyBox(
+                        cx=det.cx,
+                        cy=det.cy,
+                        w=det.w,
+                        h=det.h,
+                        first_ts=seeded_ts if force_static else now,
+                        last_ts=now,
+                    )
+                )
+                if not force_static:
+                    live.append(det)
+        st.sticky = [b for b in st.sticky if (now - b.last_ts) < _STICKY_TTL_S]
+        return live
 
     def _still_held(self, last_hit: float | None, now: float, hold_s: float) -> bool:
         return last_hit is not None and (now - last_hit) < hold_s
@@ -149,7 +239,12 @@ class TriggerEngine:
         return min(hold, cap) if cap > 0 else hold
 
     def _eval_presence(
-        self, st: CameraTriggerState, people: list[Detection], now: float
+        self,
+        st: CameraTriggerState,
+        people: list[Detection],
+        now: float,
+        *,
+        raw_n: int,
     ) -> None:
         need = self.trigger.presence_min_people
         if len(people) >= need:
@@ -157,9 +252,10 @@ class TriggerEngine:
             if st.presence_since is None:
                 st.presence_since = now
                 logger.info(
-                    "presence arm camera=%s people=%s need=%.1fs",
+                    "presence arm camera=%s live=%s raw=%s need=%.1fs",
                     st.camera_id,
                     len(people),
+                    raw_n,
                     self.trigger.presence_sustain_s,
                 )
             elif (now - st.presence_since) >= self.trigger.presence_sustain_s:
@@ -169,6 +265,8 @@ class TriggerEngine:
                         trigger_type="presence",
                         evidence={
                             "people": len(people),
+                            "people_raw": raw_n,
+                            "static": max(0, raw_n - len(people)),
                             "max_conf": round(max(d.conf for d in people), 3),
                             "max_h": round(max(d.h for d in people), 1),
                         },
