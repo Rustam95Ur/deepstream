@@ -35,6 +35,13 @@ class IncidentClipSink:
         self._enabled = enabled
 
     def send(self, payload: dict[str, Any]) -> str | None:
+        camera_id = str(payload.get("camera_id") or "").strip()
+        cam = self._by_id.get(camera_id)
+        if cam:
+            if not str(payload.get("camera_uri") or "").strip():
+                payload["camera_uri"] = cam.main_uri
+            if not str(payload.get("camera_name") or "").strip():
+                payload["camera_name"] = cam.name or camera_id
         if self._should_clip(payload):
             self._attach_clip(payload)
         payload.update(normalize_payload(payload))

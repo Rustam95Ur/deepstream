@@ -198,7 +198,11 @@ Content-Type: application/json
     <section class="card">
       <div class="card-head">
         <h2>Webhook’и ({{ hooks.length }})</h2>
-        <p class="lede">Исходящие сработки на URL. Логин и пароль — для входящего API камер.</p>
+        <p class="lede">
+          Исходящие сработки в формате SmartBox на
+          <code>POST /api/v1/school/incident-ingest/</code>.
+          Логин и пароль — для входящего API камер.
+        </p>
       </div>
       <div class="card-body">
         <div v-if="hooks.length" class="table-wrap">
@@ -251,7 +255,15 @@ Content-Type: application/json
         </div>
         <div class="card-body form-grid">
           <Field id="wh-name" v-model="form.name" label="Имя" />
-          <Field id="wh-url" v-model="form.url" class="span-2" label="URL" addon="POST" required />
+          <Field
+            id="wh-url"
+            v-model="form.url"
+            class="span-2"
+            label="URL"
+            addon="POST"
+            required
+            hint="Campus: /api/v1/school/incident-ingest/"
+          />
           <Field id="wh-login" v-model="form.login" label="Логин" :required="!editingId" autocomplete="username" />
           <Field
             id="wh-password"

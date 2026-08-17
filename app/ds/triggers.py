@@ -373,6 +373,7 @@ class TriggerEngine:
         payload = build_payload(
             camera_id=st.camera_id,
             camera_name=(cam.name if cam else "") or st.camera_id,
+            camera_uri=(cam.main_uri if cam else "") or "",
             trigger_type=trigger_type,
             pre_s=self.app_cfg.record.clip_pre_s,
             post_s=self.app_cfg.record.clip_post_s,

@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import db_enabled, session_scope
-from app.ds.payload import normalize_payload
+from app.ds.payload import normalize_payload, to_smartbox_ingest
 from app.ds.sinks.http_sink import post_json
 from app.history import record_send
 from app.models import OutboundJobRow, TriggerEventRow, WebhookRow
@@ -228,6 +228,7 @@ def _backoff_s(attempts: int) -> float:
 def enqueue_payload(payload: dict[str, Any], *, reason: str = "trigger") -> int:
     body = normalize_payload(payload)
     event_id = str(body.get("event_id") or "")
+    outbound = to_smartbox_ingest(body)
     settings = get_store().get_settings()
     if not settings.enable_http_sink:
         record_send(
@@ -267,7 +268,7 @@ def enqueue_payload(payload: dict[str, Any], *, reason: str = "trigger") -> int:
                     event_id=event_id,
                     webhook_id=hook.id,
                     url=hook.url,
-                    payload=body,
+                    payload=outbound,
                     attempts=0,
                     max_attempts=hook.max_attempts,
                     status="pending",
@@ -325,7 +326,8 @@ def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
         return False, None, "webhook disabled"
     url = (hook.url if hook else job.url) or job.url
     timeout = hook.timeout_sec if hook else 5.0
-    body = json.dumps(job.payload or {}, ensure_ascii=False).encode("utf-8")
+    outbound = to_smartbox_ingest(job.payload or {})
+    body = json.dumps(outbound, ensure_ascii=False).encode("utf-8")
     event_id = str(job.event_id or "")
     headers = {
         "Content-Type": "application/json",

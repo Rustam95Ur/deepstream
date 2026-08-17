@@ -176,44 +176,48 @@ Content-Type: application/json
 }
 ```
 
-`main_uri`, `uri`, and `rtsp_url` are the same field. The node also answers `GET /api/v1/cameras` so Campus can import like a SmartBox `channel/list`. Outbound webhooks are the other direction: this node POSTs trigger payloads to Django.
+`main_uri`, `uri`, and `rtsp_url` are the same field. The node also answers `GET /api/v1/cameras` so Campus can import like a SmartBox `channel/list`. Outbound webhooks are the other direction: this node POSTs **SmartBox-shaped** alerts to Django `POST /api/v1/school/incident-ingest/` (no Campus contract change).
 
 ### Trigger payload (POST to each webhook)
 
-Stable contract. `clip` and `video_url` are always present (empty strings if there is no file, e.g. `stream_silent`):
+Same envelope as a SmartBox device. Point the webhook at Campus ingest:
+
+`https://<campus>/api/v1/school/incident-ingest/`
+
+Campus matches the camera by `channel_info.ipc_addr` ⊂ `Camera.rtsp_url`, else exact `channel_info.channel_name` = `Camera.name`. Keep those names/URLs in sync.
+
+`vif` / `convergence` → `behaviour.algo_model=FightingAlarm` (Incident + VLM). `presence` → `algo_model=presence`. `stream_silent` has no `algo_model` → `SmartBoxLog`.
 
 ```json
 {
+  "time_received": "2026-08-17_19-40-12",
   "event_id": "...",
-  "category": "incident",
-  "camera_id": "cam_xxx",
-  "camera_name": "Gate",
-  "trigger_type": "presence|convergence|vif|stream_silent",
-  "trigger_time": "ISO-8601",
-  "pre_s": 5,
-  "post_s": 15,
-  "evidence": {},
-  "node_id": "ds-1",
-  "model_versions": {"detector": "yolo11n", "first_line": "nexus_deepstream"},
-  "clip": {
-    "url": "http://127.0.0.1:9200/incidents/incidents/ingest/...?X-Amz-...",
-    "bucket": "incidents",
-    "key": "incidents/ingest/<date>/<camera>/<hour>/<event_id>.mp4"
-  },
-  "video_url": "http://127.0.0.1:9200/incidents/incidents/ingest/...?X-Amz-...",
-  "video_bucket": "incidents",
-  "video_key": "incidents/ingest/<date>/<camera>/<hour>/<event_id>.mp4"
+  "alert_info": {
+    "type": 1,
+    "device_info": {"device_name": "ds-1", "device_sn": "ds-1"},
+    "channel_info": {
+      "channel_name": "Калитка",
+      "ipc_addr": "10.0.0.12/stream1"
+    },
+    "behaviour": {
+      "algo_model": "FightingAlarm",
+      "capture_time": 1723921212,
+      "video_url": "http://127.0.0.1:9200/incidents/incidents/ingest/...?X-Amz-..."
+    }
+  }
 }
 ```
 
-Failed deliveries retry with backoff, then sit in the dead-letter queue until resend from history.
+Failed deliveries retry with backoff, then sit in the dead-letter queue until resend from history. History on this node still stores the internal trigger (clip key, `trigger_type`).
 
 On an incident trigger the node waits `post_s`, concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads the MP4 to MinIO, then enqueues POSTs. `stream_silent` skips the clip. The ring-buffer (`gst-launch` + `splitmuxsink`, ~3s segments) runs 24/7 for enabled RTSP cameras.
+
+Campus still tries to pull `behaviour.video_url` from the camera’s SmartBox with Digest auth. The MinIO URL is stored on the Incident (`source_alert_json`); auto-download works only if that camera is linked to a real SmartBox that can serve the path. Keep `INCIDENT_FIRST_LINE=smartbox` (default) or ingest incident-alerts are ACK’d and dropped.
 
 ## Multi-node with one Django
 
 1. Deploy node A (`node_id=ds-1`) and node B (`node_id=ds-2`).
-2. On each node add a webhook (URL + login/password for inbound camera API) → same Campus ingest endpoint.
+2. On each node add a webhook (URL + login/password for inbound camera API) → same Campus `incident-ingest` endpoint.
 3. Campus creates/updates a camera locally, then `POST/PUT /api/v1/cameras` on the chosen node. Campus can also `GET /api/v1/cameras` to import.
 4. Later in Campus: model `DeepStreamNode` + import cameras (create/update) + reject if camera already on another node.
 

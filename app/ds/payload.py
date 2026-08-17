@@ -1,10 +1,11 @@
-"""Stable trigger payload: event_id, clip, video_url are always present."""
+"""Internal trigger payload + SmartBox ingest envelope for Campus."""
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 
 def _str(value: Any) -> str:
@@ -18,6 +19,41 @@ def _float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+# Campus ``behaviour.algo_model`` → Incident. Fight-like DS triggers use the
+# SmartBox name operators already filter on; VLM still runs (only SmokingAlarm
+# bypasses). ``stream_silent`` has no algo_model → SmartBoxLog.
+_ALGO_MODEL = {
+    "vif": "FightingAlarm",
+    "convergence": "FightingAlarm",
+    "presence": "presence",
+}
+
+_DEFAULT_RTSP_PORTS = {554, 80, 443}
+
+
+def ipc_addr_from_uri(uri: str) -> str:
+    """Host (+ non-default port) + path, no credentials — Campus ``rtsp_url__icontains``."""
+    raw = _str(uri)
+    if not raw:
+        return ""
+    parsed = urlsplit(raw)
+    host = (parsed.hostname or "").strip()
+    path = (parsed.path or "").rstrip("/")
+    if path == "/":
+        path = ""
+    if host:
+        port = parsed.port
+        hostport = host
+        if port and port not in _DEFAULT_RTSP_PORTS:
+            hostport = f"{host}:{port}"
+        return f"{hostport}{path}" if path else hostport
+    if "://" in raw:
+        return ""
+    if "@" in raw:
+        raw = raw.rsplit("@", 1)[-1]
+    return raw
+
+
 def clip_from_payload(payload: dict[str, Any]) -> dict[str, str]:
     raw = payload.get("clip") if isinstance(payload.get("clip"), dict) else {}
     url = _str(payload.get("video_url") or raw.get("url"))
@@ -27,7 +63,7 @@ def clip_from_payload(payload: dict[str, Any]) -> dict[str, str]:
 
 
 def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Always emit the public contract, including empty clip / video_url."""
+    """Always emit the internal contract, including empty clip / video_url."""
     clip = clip_from_payload(payload)
     evidence = payload.get("evidence")
     models = payload.get("model_versions")
@@ -57,6 +93,16 @@ def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
         out["source_video"] = source_video
     if payload.get("source_offset_s") is not None:
         out["source_offset_s"] = _float(payload.get("source_offset_s"))
+    camera_uri = _str(
+        payload.get("camera_uri")
+        or payload.get("main_uri")
+        or payload.get("rtsp_url")
+    )
+    if camera_uri:
+        out["camera_uri"] = camera_uri
+    ipc = _str(payload.get("ipc_addr")) or ipc_addr_from_uri(camera_uri)
+    if ipc:
+        out["ipc_addr"] = ipc
     return out
 
 
@@ -78,6 +124,70 @@ def attach_clip(
     return payload
 
 
+def _capture_unix(trigger_time: str) -> int:
+    raw = _str(trigger_time)
+    if not raw:
+        return int(datetime.now(timezone.utc).timestamp())
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except ValueError:
+        return int(datetime.now(timezone.utc).timestamp())
+
+
+def _time_received(ts: int) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    Campus ``POST /api/v1/school/incident-ingest/`` body.
+
+    Same shape as a SmartBox alert: envelope + ``alert_info`` with
+    ``channel_info`` / ``behaviour.algo_model`` / ``behaviour.video_url``.
+    Already-wrapped payloads are returned unchanged.
+    """
+    if isinstance(payload.get("alert_info"), dict):
+        return payload
+    body = normalize_payload(payload)
+    trigger = _str(body.get("trigger_type"))
+    ts = _capture_unix(_str(body.get("trigger_time")))
+    channel_name = _str(body.get("camera_name")) or _str(body.get("camera_id"))
+    ipc = _str(body.get("ipc_addr")) or ipc_addr_from_uri(
+        _str(body.get("camera_uri"))
+    )
+    device_name = _str(body.get("node_id")) or "nexus-deepstream"
+    video_url = _str(body.get("video_url"))
+    incident = trigger not in {"", "stream_silent"}
+    behaviour: dict[str, Any] = {"capture_time": ts}
+    if video_url:
+        behaviour["video_url"] = video_url
+    if incident:
+        behaviour["algo_model"] = _ALGO_MODEL.get(trigger, trigger)
+    alert_info: dict[str, Any] = {
+        "type": 1 if incident else (trigger or "stream_silent"),
+        "device_info": {
+            "device_name": device_name,
+            "device_sn": device_name,
+        },
+        "channel_info": {
+            "channel_name": channel_name,
+            "ipc_addr": ipc,
+        },
+        "behaviour": behaviour,
+    }
+    envelope: dict[str, Any] = {
+        "time_received": _time_received(ts),
+        "alert_info": alert_info,
+    }
+    event_id = _str(body.get("event_id"))
+    if event_id:
+        envelope["event_id"] = event_id
+    return envelope
+
+
 def build_payload(
     *,
     camera_id: str,
@@ -91,6 +201,7 @@ def build_payload(
     source_offset_s: float | None = None,
     node_id: str = "",
     camera_name: str = "",
+    camera_uri: str = "",
     video_url: str | None = None,
     video_key: str | None = None,
     video_bucket: str | None = None,
@@ -101,6 +212,7 @@ def build_payload(
             "category": category,
             "camera_id": str(camera_id),
             "camera_name": camera_name or str(camera_id),
+            "camera_uri": camera_uri,
             "trigger_type": trigger_type,
             "trigger_time": datetime.now(timezone.utc).isoformat(),
             "pre_s": float(pre_s),
