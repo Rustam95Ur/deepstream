@@ -172,7 +172,13 @@ Content-Type: application/json
   "name": "Калитка",
   "rtsp_url": "rtsp://user:pass@10.0.0.12/stream1",
   "enabled": true,
-  "external_id": "42"
+  "external_id": "42",
+  "stream_protocol": 2,
+  "resolution_width": 1280,
+  "resolution_height": 720,
+  "fps": 25,
+  "allow_preprocessing": false,
+  "usage_modules": [2]
 }
 ```
 

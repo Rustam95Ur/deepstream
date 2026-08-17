@@ -262,7 +262,9 @@ class Store:
                 row.main_uri = cam.main_uri
                 row.enabled = cam.enabled
                 row.external_id = cam.external_id
-                row.extra = cam.meta or {}
+                incoming_meta = dict(cam.meta or {})
+                prev_meta = dict(row.extra or {})
+                row.extra = {**prev_meta, **incoming_meta} if incoming_meta else prev_meta
                 row.enabled_triggers = cam.enabled_triggers
                 row.updated_at = now
                 session.flush()

@@ -127,6 +127,27 @@ input:focus-visible,
   font-size: 1.05rem;
   font-weight: 600;
 }
+.check-set {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.check-set label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.check-set input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
 .field-hint {
   margin: 0;
   color: var(--muted);

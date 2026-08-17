@@ -21,6 +21,7 @@ _CAMERA_KNOWN = {
     "rtsp_url",
     "url",
     "enabled",
+    "is_active",
     "external_id",
     "meta",
     "enabled_triggers",
@@ -83,6 +84,8 @@ class CameraIn(BaseModel):
         name = _first_str(raw.get("name"), raw.get("title"), raw.get("channel_name"), cam_id)
         extra_meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else {}
         leftover = {k: v for k, v in raw.items() if k not in _CAMERA_KNOWN}
+        if "enabled" not in raw and "is_active" in raw:
+            raw["enabled"] = raw.get("is_active")
         raw["id"] = cam_id
         raw["name"] = name
         raw["main_uri"] = uri
@@ -130,6 +133,12 @@ class CameraPatch(BaseModel):
             name = _first_str(raw.get("title"), raw.get("channel_name"))
             if name:
                 raw["name"] = name
+        leftover = {k: v for k, v in raw.items() if k not in _CAMERA_KNOWN}
+        extra_meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else {}
+        if leftover or extra_meta:
+            raw["meta"] = {**leftover, **extra_meta}
+        if "enabled" not in raw and "is_active" in raw:
+            raw["enabled"] = raw.get("is_active")
         if "enabled" in raw:
             raw["enabled"] = _as_bool(raw.get("enabled"), True)
         return raw

@@ -75,7 +75,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   cameras: (query: CameraQuery = {}) => request<CameraList>(`/api/v1/cameras${qs(query)}`),
-  upsertCamera: (body: { id: string; name: string; main_uri: string; enabled: boolean; enabled_triggers?: string[] | null }) =>
+  upsertCamera: (body: Record<string, unknown>) =>
     request<Camera>("/api/v1/cameras", {
       method: "POST",
       body: JSON.stringify(body),

@@ -9,6 +9,7 @@ import { ApiError, api } from "../api";
 import { PAGE_SIZE, useCursorPage } from "../cursorPage";
 import { flash, refreshCameras, store } from "../store";
 import type { Camera, CameraQuery } from "../types";
+import { cameraProfile, resolutionLabel } from "../cameraProfile";
 
 const ENABLED_OPTS = [
   { value: "", label: "Все" },
@@ -152,7 +153,7 @@ onMounted(() => {
     <section class="card">
       <div class="card-head">
         <h2>Реестр ({{ rows.length }})</h2>
-        <p class="lede">Статус применяется сразу. Изменение и удаление влияют на поток.</p>
+        <p class="lede">Статус применяется сразу. Разрешение и FPS приходят из Campus при синке.</p>
       </div>
       <div class="card-body">
         <div v-if="rows.length" class="table-wrap">
@@ -163,6 +164,8 @@ onMounted(() => {
                 <th>ID</th>
                 <th>Имя</th>
                 <th>Адрес</th>
+                <th>Разрешение</th>
+                <th>Кадр/с</th>
                 <th></th>
               </tr>
             </thead>
@@ -181,6 +184,8 @@ onMounted(() => {
                 <td><code>{{ c.id }}</code></td>
                 <td>{{ c.name }}</td>
                 <td class="uri">{{ c.main_uri }}</td>
+                <td>{{ resolutionLabel(c) }}</td>
+                <td>{{ cameraProfile(c).fps }}</td>
                 <td class="td-action">
                   <div class="row">
                     <button
