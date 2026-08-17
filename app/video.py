@@ -16,7 +16,7 @@ from app.ds.log_buffer import install as install_log_buffer
 from app.ds.log_buffer import snapshot as log_snapshot
 from app.ds.ring_buffer import get_ring_buffer
 from app.history import get_history_writer
-from app.schemas import LogLineOut, RingCameraHealthOut, VideoHealthOut
+from app.schemas import LogLineOut, RingCameraHealthOut, VideoHealthOut, WorkerStatusOut
 from app.storage import get_store
 from app.video_auth import require_video_token, video_token
 from app.webhooks import get_outbound_worker
@@ -78,9 +78,9 @@ def _watch_config() -> None:
             logger.exception("video: config watch failed")
             continue
         if last is not None and fp != last:
-    logger.info("video: cameras/settings changed — reload pipeline + ring-buffer")
-    get_manager().request_reload()
-    get_ring_buffer().request_refresh()
+            logger.info("video: cameras/settings changed — reload pipeline + ring-buffer")
+            get_manager().request_reload()
+            get_ring_buffer().request_refresh()
         last = fp
 
 
