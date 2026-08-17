@@ -7,10 +7,11 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any
 
 from app.ds.config import app_config_from_settings
+from app.ds.log_buffer import snapshot as log_snapshot
 from app.ds.sink_factory import build_sink
+from app.pipeline_status import as_log_lines
 from app.schemas import WorkerStatusOut
 from app.storage import Store, get_bootstrap, get_store
 
@@ -43,6 +44,7 @@ class PipelineManager:
         ok, avail_detail = pipeline_available()
         alive = bool(self._thread and self._thread.is_alive())
         running = self._active and alive
+        settings = self.store.get_settings()
         return WorkerStatusOut(
             running=running,
             available=ok,
@@ -50,6 +52,9 @@ class PipelineManager:
             last_started_at=self._last_started_at,
             last_error=self._last_error,
             camera_ids=list(self._camera_ids),
+            reload_pending=self._reload_requested.is_set(),
+            max_streams=int(settings.max_streams),
+            recent_errors=as_log_lines(log_snapshot(40)),
         )
 
     def _status_detail(self, ok: bool, avail_detail: str, running: bool) -> str:
@@ -97,13 +102,13 @@ class PipelineManager:
         os.environ.setdefault("DEEPSTREAM_DEBUG_DIR", str(boot.debug_dir))
 
         while not self._stop.is_set():
+            self.store.invalidate_camera_cache()
             settings = self.store.get_settings()
             cameras = [c for c in self.store.list_cameras() if c.enabled]
-            self._camera_ids = [c.id for c in cameras]
-
             ok, detail = pipeline_available()
             if not ok:
                 self._running = False
+                self._camera_ids = []
                 self._last_error = detail
                 logger.warning("Pipeline idle: %s", detail)
                 self._wait_or_reload(15.0)
@@ -111,16 +116,22 @@ class PipelineManager:
 
             if not cameras:
                 self._running = False
+                self._camera_ids = []
                 self._last_error = "нет включённых камер"
                 logger.info("Pipeline idle: нет включённых камер")
                 self._wait_or_reload(10.0)
                 continue
 
             if len(cameras) > settings.max_streams:
+                dropped = cameras[settings.max_streams :]
                 cameras = cameras[: settings.max_streams]
                 logger.warning(
-                    "Truncated cameras to max_streams=%s", settings.max_streams
+                    "Truncated cameras to max_streams=%s; not in pipeline: %s",
+                    settings.max_streams,
+                    ", ".join(c.id for c in dropped),
                 )
+
+            self._camera_ids = [c.id for c in cameras]
 
             cfg = app_config_from_settings(settings, cameras)
             sink = build_sink(settings, cameras=cfg.enabled_cameras)
@@ -133,9 +144,10 @@ class PipelineManager:
                 from app.ds.pipeline import run_pipeline
 
                 logger.info(
-                    "Starting pipeline node=%s cameras=%s",
+                    "Starting pipeline node=%s cameras=%s max_batch=%s",
                     settings.node_id,
                     len(cameras),
+                    settings.max_streams,
                 )
                 while not self._stop.is_set() and not self._reload_requested.is_set():
                     run_pipeline(
@@ -143,8 +155,13 @@ class PipelineManager:
                         cfg.enabled_cameras,
                         sink,
                         interrupt=self._reload_requested,
+                        max_batch_size=settings.max_streams,
                     )
                     if self._stop.is_set() or self._reload_requested.is_set():
+                        logger.info(
+                            "Pipeline stopped for %s",
+                            "shutdown" if self._stop.is_set() else "reload",
+                        )
                         break
                     logger.warning(
                         "Pipeline returned; reconnect in %.0fs",

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body
 
 from app import __version__
 from app.api import ApiAuth
+from app.pipeline_status import attach_status
 from app.schemas import HealthOut, VideoHealthOut, WorkerStatusOut
 from app.settings import NodeSettings
 from app.storage import get_store
@@ -59,26 +60,35 @@ def patch_settings(body: dict = Body(...)) -> NodeSettings:
     return updated
 
 
+def _with_skips(status: WorkerStatusOut) -> WorkerStatusOut:
+    store = get_store()
+    return attach_status(status, store.list_cameras(), store.get_settings())
+
+
 @router.get("/worker", response_model=WorkerStatusOut, dependencies=[ApiAuth])
 def get_worker_status() -> WorkerStatusOut:
-    return worker_status()
+    return _with_skips(worker_status())
 
 
 @router.get("/video/health", response_model=VideoHealthOut, dependencies=[ApiAuth])
 def get_video_health() -> VideoHealthOut:
-    return video_health()
+    health = video_health()
+    health.pipeline = _with_skips(health.pipeline)
+    if not health.recent_errors:
+        health.recent_errors = list(health.pipeline.recent_errors)
+    return health
 
 
 @router.post("/worker/start", response_model=WorkerStatusOut, dependencies=[ApiAuth])
 def post_worker_start() -> WorkerStatusOut:
-    return worker_start()
+    return _with_skips(worker_start())
 
 
 @router.post("/worker/stop", response_model=WorkerStatusOut, dependencies=[ApiAuth])
 def post_worker_stop() -> WorkerStatusOut:
-    return worker_stop()
+    return _with_skips(worker_stop())
 
 
 @router.post("/worker/reload", response_model=WorkerStatusOut, dependencies=[ApiAuth])
 def post_worker_reload() -> WorkerStatusOut:
-    return notify_reload() or worker_status()
+    return _with_skips(notify_reload() or worker_status())

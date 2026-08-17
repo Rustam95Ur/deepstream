@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import { ApiError, api } from "../api";
 import { enabledCount, flash, store } from "../store";
 import { triggerLabel } from "../schoolAlgorithms";
-import type { OutboundJob, TriggerEvent, VideoHealth, Webhook } from "../types";
+import type { Camera, OutboundJob, TriggerEvent, VideoHealth, Webhook } from "../types";
 
 const router = useRouter();
 const health = ref<VideoHealth | null>(null);
@@ -16,7 +16,23 @@ const playUrl = ref("");
 const busyId = ref("");
 let timer: ReturnType<typeof setInterval> | null = null;
 
-const pipelineIds = computed(() => new Set(store.worker?.camera_ids || []));
+const pipelineIds = computed(() => {
+  const fromHealth = health.value?.pipeline?.camera_ids;
+  const ids = fromHealth?.length ? fromHealth : store.worker?.camera_ids || [];
+  return new Set(ids);
+});
+const skipById = computed(() => {
+  const rows = health.value?.pipeline?.skipped || store.worker?.skipped || [];
+  return new Map(rows.map((row) => [row.camera_id, row.reason]));
+});
+const errorLog = computed(() => {
+  const rows =
+    health.value?.recent_errors ||
+    health.value?.pipeline?.recent_errors ||
+    store.worker?.recent_errors ||
+    [];
+  return rows.slice(0, 40);
+});
 const enabledHooks = computed(() => hooks.value.filter((h) => h.enabled));
 const rtspCameras = computed(() =>
   store.cameras.filter((c) => c.enabled && isRtsp(c.main_uri)),
@@ -48,6 +64,22 @@ function ringLabel(cameraId: string) {
   if (!row.alive) return "упал";
   if (row.stalled) return "застой";
   return "живой";
+}
+
+function pipeReason(cam: Camera) {
+  if (pipelineIds.value.has(cam.id)) return "";
+  return skipById.value.get(cam.id) || (cam.enabled ? "не в текущем графе" : "выключена");
+}
+
+function logTime(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString("ru-RU");
+}
+
+function logLevel(level: string) {
+  return (level || "WARN").toUpperCase();
 }
 
 function fmt(iso: string) {
@@ -202,6 +234,7 @@ onUnmounted(() => {
                 <th>Камера</th>
                 <th>URI</th>
                 <th>Pipeline</th>
+                <th>Причина</th>
                 <th>Ring-buffer</th>
               </tr>
             </thead>
@@ -216,14 +249,19 @@ onUnmounted(() => {
                   <span
                     class="pill"
                     :class="pipelineIds.has(cam.id) ? 'pill-ok' : 'pill-err'"
+                    :title="pipeReason(cam)"
                   >
                     {{ pipelineIds.has(cam.id) ? "в пайпе" : "нет" }}
                   </span>
+                </td>
+                <td class="reason-cell" :class="{ 'is-ok': pipelineIds.has(cam.id) }">
+                  {{ pipeReason(cam) || "—" }}
                 </td>
                 <td>
                   <span
                     class="pill"
                     :class="ringLabel(cam.id) === 'живой' ? 'pill-ok' : 'pill-err'"
+                    :title="ringOf(cam.id)?.last_error || ''"
                   >
                     {{ ringLabel(cam.id) }}
                   </span>
@@ -239,6 +277,34 @@ onUnmounted(() => {
       </div>
       <div class="card-foot end">
         <button type="button" class="ghost" @click="router.push({ name: 'cameras' })">К камерам</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Лог ошибок</h2>
+        <p class="lede">WARNING и ERROR с video-процесса и ring-buffer. Обновляется вместе со статусом.</p>
+      </div>
+      <div class="card-body">
+        <div v-if="errorLog.length" class="log-list" role="log" aria-live="polite">
+          <article
+            v-for="(row, idx) in errorLog"
+            :key="`${row.ts || ''}-${idx}`"
+            class="log-row"
+            :class="{ 'is-error': logLevel(row.level).startsWith('ERR') }"
+          >
+            <p class="log-meta">
+              <span>{{ logTime(row.ts) || "—" }}</span>
+              <span>{{ logLevel(row.level) }}</span>
+              <span v-if="row.logger">{{ row.logger }}</span>
+            </p>
+            <p class="log-msg">{{ row.message }}</p>
+          </article>
+        </div>
+        <div v-else class="empty">
+          <p class="empty-title">Ошибок нет</p>
+          <p class="lede">Как только пайплайн или recorder упадут — строка появится здесь.</p>
+        </div>
       </div>
     </section>
 

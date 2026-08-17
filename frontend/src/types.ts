@@ -77,6 +77,19 @@ export interface UserQuery {
   limit?: number;
 }
 
+export interface CameraSkip {
+  camera_id: string;
+  name: string;
+  reason: string;
+}
+
+export interface LogLine {
+  ts?: string | null;
+  level: string;
+  logger: string;
+  message: string;
+}
+
 export interface WorkerStatus {
   running: boolean;
   available: boolean;
@@ -84,6 +97,10 @@ export interface WorkerStatus {
   last_started_at: string | null;
   last_error: string;
   camera_ids: string[];
+  reload_pending?: boolean;
+  max_streams?: number;
+  skipped?: CameraSkip[];
+  recent_errors?: LogLine[];
 }
 
 export interface User {
@@ -182,6 +199,7 @@ export interface RingCameraHealth {
   last_segment_age_s: number | null;
   restarts: number;
   codec: string;
+  last_error?: string;
 }
 
 export interface VideoHealth {
@@ -191,6 +209,7 @@ export interface VideoHealth {
   ring_running: boolean;
   pipeline: WorkerStatus;
   cameras: RingCameraHealth[];
+  recent_errors?: LogLine[];
 }
 
 export interface HistoryQuery {

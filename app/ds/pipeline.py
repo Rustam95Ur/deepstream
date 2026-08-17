@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from app.ds.config import AppConfig, CameraConfig
+from app.ds.rtsp import sanitize_rtsp_url
 from app.ds.triggers import Detection, TriggerEngine
 
 logger = logging.getLogger(__name__)
@@ -220,6 +221,10 @@ topk=300
     return dest
 
 
+def _yaml_quote(value: str) -> str:
+    return '"' + (value or "").replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def write_source_config(
     dest: Path,
     cameras: list[CameraConfig],
@@ -228,15 +233,18 @@ def write_source_config(
     width: int,
     height: int,
     drop_pipeline_eos: bool | None = None,
+    max_batch_size: int | None = None,
+    reconnect_s: float = 10.0,
 ) -> Path:
     """nvmultiurisrcbin YAML — RTSP uses TCP (protocol=4); file:// for inbox tests."""
     lines = [
         "source-list:",
     ]
     for cam in cameras:
-        lines.append(f'  - uri: "{cam.main_uri}"')
-        lines.append(f'    sensor-id: "{cam.camera_id}"')
-        lines.append(f'    sensor-name: "{cam.camera_id}"')
+        uri = sanitize_rtsp_url(cam.main_uri) or cam.main_uri
+        lines.append(f"  - uri: {_yaml_quote(uri)}")
+        lines.append(f"    sensor-id: {_yaml_quote(cam.camera_id)}")
+        lines.append(f"    sensor-name: {_yaml_quote(cam.camera_id)}")
     has_rtsp = any((c.main_uri or "").lower().startswith("rtsp://") for c in cameras)
     # Live RTSP: keep pipeline up after a source EOS. File/inbox: propagate EOS and exit.
     drop_eos = (
@@ -244,17 +252,20 @@ def write_source_config(
         if drop_pipeline_eos is not None
         else (1 if live_source else 0)
     )
+    mux_batch = max(1, len(cameras), int(max_batch_size or 0))
+    reconnect = max(5, int(reconnect_s or 10))
     lines.extend(
         [
             "source-config:",
             "  source-bin: nvmultiurisrcbin",
             "  properties:",
-            f"    max-batch-size: {max(1, len(cameras))}",
+            f"    max-batch-size: {mux_batch}",
             f"    live-source: {1 if live_source else 0}",
             f"    width: {width}",
             f"    height: {height}",
             "    batched-push-timeout: 40000",
             f"    drop-pipeline-eos: {drop_eos}",
+            "    disable-audio: true",
         ]
     )
     if has_rtsp:
@@ -262,7 +273,10 @@ def write_source_config(
             [
                 # GST_RTSP_LOWER_TRANS_TCP = 0x04
                 "    select-rtp-protocol: 4",
-                "    rtsp-reconnect-interval: 10",
+                f"    rtsp-reconnect-interval: {reconnect}",
+                "    rtsp-reconnect-attempts: -1",
+                "    init-rtsp-reconnect-interval: 5",
+                "    latency: 200",
             ]
         )
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -277,6 +291,7 @@ def run_pipeline(
     *,
     exit_on_eos: bool = False,
     interrupt: threading.Event | None = None,
+    max_batch_size: int | None = None,
 ) -> None:
     from pyservicemaker import Flow, Pipeline, RenderMode
 
@@ -317,10 +332,11 @@ def run_pipeline(
         os.chdir(yolo_dir)
         logger.info("CWD set to YOLO dir for engine cache: %s", yolo_dir)
 
-    batch_size = max(1, len(cameras))
+    infer_batch = max(1, len(cameras))
+    mux_batch = max(infer_batch, int(max_batch_size or 0))
     pgie = write_pgie_config(
         work_dir / "pgie.yml",
-        batch_size=batch_size,
+        batch_size=infer_batch,
         infer_interval=app_cfg.pipeline.infer_interval,
         conf_threshold=app_cfg.pipeline.conf_threshold,
         detector_model=detector,
@@ -332,6 +348,8 @@ def run_pipeline(
         width=app_cfg.pipeline.mux_width,
         height=app_cfg.pipeline.mux_height,
         drop_pipeline_eos=False if exit_on_eos else None,
+        max_batch_size=mux_batch,
+        reconnect_s=app_cfg.pipeline.reconnect_s,
     )
 
     def _note_frame(_n: int) -> None:
@@ -346,8 +364,9 @@ def run_pipeline(
     )
 
     logger.info(
-        "Starting DeepStream pipeline cameras=%s live=%s exit_on_eos=%s pgie=%s sources=%s",
+        "Starting DeepStream pipeline cameras=%s mux_batch=%s live=%s exit_on_eos=%s pgie=%s sources=%s",
         len(cameras),
+        mux_batch,
         app_cfg.pipeline.live_source,
         exit_on_eos,
         pgie,
@@ -366,17 +385,35 @@ def run_pipeline(
     )
 
     def _stop_pipeline(reason: str) -> None:
-        logger.info("Stopping pipeline (%s)", reason)
-        for name in ("stop", "quit", "shutdown"):
-            fn = getattr(pipeline, name, None)
-            if callable(fn):
+        """Ask Flow/Pipeline to leave PLAYING. Safe to call repeatedly."""
+        for obj in (pipeline, flow):
+            for name in ("stop", "quit", "shutdown"):
+                fn = getattr(obj, name, None)
+                if not callable(fn):
+                    continue
                 try:
                     fn()
-                    return
                 except Exception:
-                    logger.exception("pipeline.%s failed", name)
-        # Last resort: interrupt Flow main loop via stdin EOF already done;
-        # raise KeyboardInterrupt in flow thread if we own it.
+                    logger.exception("%s.%s failed (%s)", type(obj).__name__, name, reason)
+        native = None
+        for attr in ("_pipeline", "pipeline", "gst_pipeline"):
+            candidate = getattr(pipeline, attr, None)
+            if candidate is not None and candidate is not pipeline:
+                native = candidate
+                break
+        if native is None:
+            return
+        try:
+            from gi.repository import Gst  # type: ignore
+
+            send_event = getattr(native, "send_event", None)
+            set_state = getattr(native, "set_state", None)
+            if callable(send_event):
+                send_event(Gst.Event.new_eos())
+            if callable(set_state):
+                set_state(Gst.State.NULL)
+        except Exception:
+            logger.exception("native Gst stop failed (%s)", reason)
 
     def _eos_idle_watchdog():
         """If drop-pipeline-eos still leaves Flow hung, stop after frames go idle."""
@@ -400,10 +437,14 @@ def run_pipeline(
     def _interrupt_watch() -> None:
         if interrupt is None:
             return
+        attempts = 0
         while not stop.wait(0.4):
-            if interrupt.is_set():
-                _stop_pipeline("reload")
-                return
+            if not interrupt.is_set():
+                continue
+            attempts += 1
+            if attempts == 1 or attempts % 15 == 0:
+                logger.info("reload requested — stopping live pipeline (attempt %s)", attempts)
+            _stop_pipeline("reload")
 
     if interrupt is not None:
         threading.Thread(

@@ -12,9 +12,11 @@ from fastapi import Depends, FastAPI
 from sqlalchemy import text
 
 from app.db import db_enabled, get_engine, session_scope
+from app.ds.log_buffer import install as install_log_buffer
+from app.ds.log_buffer import snapshot as log_snapshot
 from app.ds.ring_buffer import get_ring_buffer
 from app.history import get_history_writer
-from app.schemas import RingCameraHealthOut, VideoHealthOut, WorkerStatusOut
+from app.schemas import LogLineOut, RingCameraHealthOut, VideoHealthOut
 from app.storage import get_store
 from app.video_auth import require_video_token, video_token
 from app.webhooks import get_outbound_worker
@@ -76,9 +78,9 @@ def _watch_config() -> None:
             logger.exception("video: config watch failed")
             continue
         if last is not None and fp != last:
-            logger.info("video: cameras/settings changed — reload pipeline + ring-buffer")
-            get_manager().request_reload()
-            get_ring_buffer().request_refresh()
+    logger.info("video: cameras/settings changed — reload pipeline + ring-buffer")
+    get_manager().request_reload()
+    get_ring_buffer().request_refresh()
         last = fp
 
 
@@ -111,23 +113,41 @@ def video_health() -> VideoHealthOut:
             last_segment_age_s=item.get("last_segment_age_s"),
             restarts=int(item.get("restarts") or 0),
             codec=str(item.get("codec") or ""),
+            last_error=str(item.get("last_error") or ""),
         )
         for item in ring.get("cameras") or []
         if isinstance(item, dict)
     ]
+    errors = [LogLineOut.model_validate(row) for row in log_snapshot(40)]
+    seen = {e.message for e in errors}
+    for cam in cameras:
+        if cam.last_error and cam.last_error not in seen:
+            errors.insert(
+                0,
+                LogLineOut(
+                    level="ERROR",
+                    logger=f"ring.{cam.name or cam.camera_id}",
+                    message=cam.last_error,
+                ),
+            )
+            seen.add(cam.last_error)
+    pipe = get_manager().status()
+    pipe.recent_errors = errors
     return VideoHealthOut(
         status="ok",
         gst_available=bool(ring.get("gst_available")),
         clip_record=bool(settings.enable_clip_record),
         ring_running=bool(ring.get("ring_running")),
-        pipeline=get_manager().status(),
+        pipeline=pipe,
         cameras=cameras,
+        recent_errors=errors,
     )
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _wait_for_db()
+    install_log_buffer()
     get_history_writer().start()
     get_outbound_worker().start()
     get_ring_buffer().start()
@@ -181,7 +201,7 @@ def worker_stop() -> WorkerStatusOut:
 def worker_reload() -> WorkerStatusOut:
     store = get_store()
     store.invalidate_camera_cache()
-    store.get_settings()
+    logger.info("video: reload requested")
     get_manager().request_reload()
     get_ring_buffer().request_refresh()
     return get_manager().status()

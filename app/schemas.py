@@ -187,6 +187,19 @@ class HealthOut(BaseModel):
     triggers_url: str = ""
 
 
+class CameraSkipOut(BaseModel):
+    camera_id: str
+    name: str = ""
+    reason: str
+
+
+class LogLineOut(BaseModel):
+    ts: datetime | None = None
+    level: str = "WARNING"
+    logger: str = ""
+    message: str = ""
+
+
 class WorkerStatusOut(BaseModel):
     running: bool
     available: bool
@@ -194,6 +207,10 @@ class WorkerStatusOut(BaseModel):
     last_started_at: datetime | None = None
     last_error: str = ""
     camera_ids: list[str] = Field(default_factory=list)
+    reload_pending: bool = False
+    max_streams: int = 0
+    skipped: list[CameraSkipOut] = Field(default_factory=list)
+    recent_errors: list[LogLineOut] = Field(default_factory=list)
 
 
 class RingCameraHealthOut(BaseModel):
@@ -204,6 +221,7 @@ class RingCameraHealthOut(BaseModel):
     last_segment_age_s: float | None = None
     restarts: int = 0
     codec: str = ""
+    last_error: str = ""
 
 
 class VideoHealthOut(BaseModel):
@@ -213,6 +231,7 @@ class VideoHealthOut(BaseModel):
     ring_running: bool = False
     pipeline: WorkerStatusOut
     cameras: list[RingCameraHealthOut] = Field(default_factory=list)
+    recent_errors: list[LogLineOut] = Field(default_factory=list)
 
 
 class WebhookIn(BaseModel):

@@ -10,7 +10,8 @@ import urllib.request
 from datetime import datetime
 from typing import Any
 
-from app.schemas import RingCameraHealthOut, VideoHealthOut, WorkerStatusOut
+from app.pipeline_status import as_log_lines
+from app.schemas import CameraSkipOut, LogLineOut, RingCameraHealthOut, VideoHealthOut, WorkerStatusOut
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +36,42 @@ def _offline(detail: str) -> WorkerStatusOut:
         last_started_at=None,
         last_error=detail,
         camera_ids=[],
+        recent_errors=[LogLineOut(level="ERROR", logger="video", message=detail)],
     )
 
 
 def _offline_health(detail: str) -> VideoHealthOut:
+    pipe = _offline(detail)
     return VideoHealthOut(
         status="error",
         gst_available=False,
         clip_record=False,
         ring_running=False,
-        pipeline=_offline(detail),
+        pipeline=pipe,
         cameras=[],
+        recent_errors=list(pipe.recent_errors),
     )
+
+
+def _parse_skips(raw: object) -> list[CameraSkipOut]:
+    out: list[CameraSkipOut] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        cam_id = str(item.get("camera_id") or "").strip()
+        reason = str(item.get("reason") or "").strip()
+        if not cam_id or not reason:
+            continue
+        out.append(
+            CameraSkipOut(
+                camera_id=cam_id,
+                name=str(item.get("name") or cam_id),
+                reason=reason,
+            )
+        )
+    return out
 
 
 def _parse_status(raw: dict[str, Any]) -> WorkerStatusOut:
@@ -67,6 +92,10 @@ def _parse_status(raw: dict[str, Any]) -> WorkerStatusOut:
         last_started_at=last_started,
         last_error=str(raw.get("last_error") or ""),
         camera_ids=[str(x) for x in ids],
+        reload_pending=bool(raw.get("reload_pending")),
+        max_streams=int(raw.get("max_streams") or 0),
+        skipped=_parse_skips(raw.get("skipped")),
+        recent_errors=as_log_lines(list(raw.get("recent_errors") or [])),
     )
 
 
@@ -85,15 +114,21 @@ def _parse_health(raw: dict[str, Any]) -> VideoHealthOut:
                 last_segment_age_s=item.get("last_segment_age_s"),
                 restarts=int(item.get("restarts") or 0),
                 codec=str(item.get("codec") or ""),
+                last_error=str(item.get("last_error") or ""),
             )
         )
+    errors = as_log_lines(list(raw.get("recent_errors") or []))
+    status = _parse_status(pipe)
+    if not errors:
+        errors = list(status.recent_errors)
     return VideoHealthOut(
         status=str(raw.get("status") or "ok"),
         gst_available=bool(raw.get("gst_available")),
         clip_record=bool(raw.get("clip_record")),
         ring_running=bool(raw.get("ring_running")),
-        pipeline=_parse_status(pipe),
+        pipeline=status,
         cameras=cameras,
+        recent_errors=errors,
     )
 
 

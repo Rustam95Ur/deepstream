@@ -25,6 +25,33 @@ from app.storage import get_store
 
 logger = logging.getLogger(__name__)
 
+_ERR_MARKERS = (
+    "ERROR",
+    "Failed",
+    "failed delayed",
+    "Could not",
+    "Internal Server",
+    "Connection refused",
+    "Not Found",
+    "no element",
+    "Received end-of-file",
+)
+
+
+def _tail_log_error(path: Path) -> str:
+    try:
+        data = path.read_bytes()[-12_288:].decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+    for line in reversed(data.splitlines()):
+        text = line.strip()
+        if not text:
+            continue
+        if any(marker in text for marker in _ERR_MARKERS):
+            return text[:400]
+    return ""
+
+
 GST_LAUNCH = "gst-launch-1.0"
 
 
@@ -161,7 +188,13 @@ def load_rtsp_cameras() -> list[CameraSpec]:
             )
         )
     if len(specs) > settings.max_streams:
+        dropped = specs[settings.max_streams :]
         specs = specs[: settings.max_streams]
+        logger.warning(
+            "Incident ring-buffer: truncated to max_streams=%s; skipped %s",
+            settings.max_streams,
+            ", ".join(s.camera_id for s in dropped),
+        )
     return specs
 
 
@@ -455,6 +488,7 @@ class IncidentRingBufferSupervisor:
                     "last_segment_age_s": round(age, 1) if age is not None else None,
                     "restarts": int(w.total_restarts),
                     "codec": w.codec,
+                    "last_error": _tail_log_error(w.log_path),
                 }
             )
         return {

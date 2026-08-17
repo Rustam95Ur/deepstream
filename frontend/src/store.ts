@@ -68,7 +68,7 @@ export async function refreshCameras() {
   store.cameras = (await api.cameras()).cameras;
 }
 
-async function refreshWorker() {
+export async function refreshWorker() {
   store.worker = await api.worker();
 }
 

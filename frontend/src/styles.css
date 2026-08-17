@@ -737,6 +737,45 @@ th {
 td { color: var(--text); }
 td.uri { word-break: break-all; color: var(--muted); max-width: 320px; }
 .td-status { width: 3.6rem; }
+.reason-cell {
+  color: var(--err);
+  font-size: 0.88rem;
+  font-weight: 500;
+  max-width: 22rem;
+  text-wrap: pretty;
+}
+.reason-cell.is-ok { color: var(--muted); font-weight: 400; }
+.log-list {
+  margin: 0;
+  max-height: 18rem;
+  overflow: auto;
+  display: grid;
+  gap: 0.65rem;
+}
+.log-row {
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--line);
+}
+.log-row:last-child { padding-bottom: 0; border-bottom: 0; }
+.log-meta {
+  margin: 0 0 0.2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.log-msg {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.log-row.is-error .log-msg { color: var(--err); }
 .pill-ok { background: var(--ok-bg); color: #0a7a45; }
 .pill-err { background: var(--err-bg); color: var(--err); }
 .pill {

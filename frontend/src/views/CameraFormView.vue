@@ -10,7 +10,7 @@ import {
   algorithmIsOn,
   setAlgorithm,
 } from "../schoolAlgorithms";
-import { flash, refreshCameras, store } from "../store";
+import { flash, refreshCameras, refreshWorker, store } from "../store";
 
 const route = useRoute();
 const router = useRouter();
@@ -91,6 +91,7 @@ async function onSubmit() {
       flash("Камера обновлена");
     }
     await refreshCameras();
+    await refreshWorker().catch(() => undefined);
     await router.push({ name: "cameras" });
   } catch (err) {
     store.error = err instanceof ApiError ? err.message : "Не удалось сохранить камеру";
