@@ -6,14 +6,12 @@ import Pager from "../components/Pager.vue";
 import { ApiError, api } from "../api";
 import { HISTORY_PAGE_SIZE, useCursorPage } from "../cursorPage";
 import { flash, store } from "../store";
+import { triggerLabel, TRIGGER_LABELS } from "../schoolAlgorithms";
 import type { HistoryQuery, OutboundJob, SendEvent, TriggerEvent } from "../types";
 
 const TRIGGER_TYPES = [
   { value: "", label: "Все типы" },
-  { value: "presence", label: "Присутствие" },
-  { value: "convergence", label: "Схождение" },
-  { value: "vif", label: "VIF" },
-  { value: "stream_silent", label: "Тишина потока" },
+  ...Object.entries(TRIGGER_LABELS).map(([value, label]) => ({ value, label })),
 ];
 
 const STATUSES = [
@@ -334,7 +332,7 @@ onMounted(() => {
               <tr v-for="row in triggers" :key="row.event_id + row.created_at">
                 <td>{{ fmt(row.created_at) }}</td>
                 <td><code>{{ row.camera_name || row.camera_id }}</code></td>
-                <td>{{ row.trigger_type }}</td>
+                <td>{{ triggerLabel(row.trigger_type) }}</td>
                 <td>
                   <button v-if="hasClip(row)" type="button" class="ghost" @click="openClip(row)">Смотреть</button>
                   <span v-else class="muted">нет</span>
@@ -472,7 +470,7 @@ onMounted(() => {
     <div v-if="playing" class="modal-scrim" @click.self="closeClip">
       <section class="card modal modal-video">
         <div class="card-head">
-          <h2>{{ playing.camera_name || playing.camera_id }} · {{ playing.trigger_type }}</h2>
+          <h2>{{ playing.camera_name || playing.camera_id }} · {{ triggerLabel(playing.trigger_type) }}</h2>
           <p class="lede">{{ playing.event_id }}</p>
         </div>
         <div class="card-body">

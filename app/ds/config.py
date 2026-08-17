@@ -7,7 +7,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from app.trigger_types import TRIGGER_TYPES, camera_trigger_override, normalize_enabled_triggers
+from app.trigger_types import (
+    DEFAULT_ENABLED_TRIGGERS,
+    camera_trigger_override,
+    normalize_enabled_triggers,
+)
 
 
 @dataclass(slots=True)
@@ -22,7 +26,9 @@ class CameraConfig:
 @dataclass(slots=True)
 class TriggerConfig:
     mode: str = "convergence"
-    enabled: frozenset[str] = field(default_factory=lambda: frozenset(TRIGGER_TYPES))
+    enabled: frozenset[str] = field(
+        default_factory=lambda: frozenset(DEFAULT_ENABLED_TRIGGERS)
+    )
     min_tracks: int = 2
     converge_dist_bh: float = 1.5
     speed_thresh_bh: float = 2.0

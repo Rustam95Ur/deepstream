@@ -17,7 +17,7 @@ const titles: Record<string, { title: string; desc: string }> = {
   "camera-edit": { title: "Изменить камеру", desc: "Параметры потока" },
   settings: { title: "Настройки", desc: "Идентификация и лимиты" },
   ingest: { title: "Связь", desc: "Входящий API камер и исходящие webhook’и" },
-  triggers: { title: "Триггеры", desc: "Какие события слать и пороги" },
+  triggers: { title: "Сценарии", desc: "Какие алгоритмы включены на ноде" },
   history: { title: "История", desc: "Сработки и отправки" },
   users: { title: "Пользователи", desc: "Доступ в консоль по email" },
   "user-new": { title: "Новый пользователь", desc: "Email и пароль для входа" },
@@ -34,7 +34,7 @@ const nav = [
   { name: "cameras", label: "Камеры", icon: "cam" },
   { name: "settings", label: "Настройки", icon: "node" },
   { name: "ingest", label: "Связь", icon: "link" },
-  { name: "triggers", label: "Триггеры", icon: "bolt" },
+  { name: "triggers", label: "Сценарии", icon: "bolt" },
   { name: "history", label: "История", icon: "history" },
   { name: "users", label: "Пользователи", icon: "user" },
 ] as const;

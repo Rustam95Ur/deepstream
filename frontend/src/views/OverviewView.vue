@@ -3,14 +3,8 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ApiError, api } from "../api";
 import { enabledCount, flash, store } from "../store";
+import { triggerLabel } from "../schoolAlgorithms";
 import type { OutboundJob, TriggerEvent, VideoHealth, Webhook } from "../types";
-
-const TYPE_LABEL: Record<string, string> = {
-  presence: "Присутствие",
-  convergence: "Схождение",
-  vif: "VIF",
-  stream_silent: "Тишина потока",
-};
 
 const router = useRouter();
 const health = ref<VideoHealth | null>(null);
@@ -54,10 +48,6 @@ function ringLabel(cameraId: string) {
   if (!row.alive) return "упал";
   if (row.stalled) return "застой";
   return "живой";
-}
-
-function typeLabel(kind: string) {
-  return TYPE_LABEL[kind] || kind;
 }
 
 function fmt(iso: string) {
@@ -273,7 +263,7 @@ onUnmounted(() => {
                 <tr v-for="row in triggers" :key="row.event_id">
                   <td>{{ fmt(row.created_at) }}</td>
                   <td>{{ row.camera_name || row.camera_id }}</td>
-                  <td>{{ typeLabel(row.trigger_type) }}</td>
+                  <td>{{ triggerLabel(row.trigger_type) }}</td>
                   <td class="td-action">
                     <button v-if="hasClip(row)" type="button" class="ghost" @click="openClip(row)">
                       Смотреть
@@ -345,7 +335,7 @@ onUnmounted(() => {
     <div v-if="playing" class="modal-scrim" @click.self="closeClip">
       <section class="card modal modal-video">
         <div class="card-head">
-          <h2>{{ playing.camera_name || playing.camera_id }} · {{ typeLabel(playing.trigger_type) }}</h2>
+          <h2>{{ playing.camera_name || playing.camera_id }} · {{ triggerLabel(playing.trigger_type) }}</h2>
           <p class="lede">{{ playing.event_id }}</p>
         </div>
         <div class="card-body">

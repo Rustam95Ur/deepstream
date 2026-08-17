@@ -7,12 +7,22 @@ TRIGGER_TYPES: tuple[str, ...] = (
     "convergence",
     "vif",
     "stream_silent",
+    "fall",
+    "smoke",
+)
+
+# Wired today. fall/smoke are saved from the UI but have no model yet.
+DEFAULT_ENABLED_TRIGGERS: tuple[str, ...] = (
+    "presence",
+    "convergence",
+    "vif",
+    "stream_silent",
 )
 
 
 def normalize_enabled_triggers(value: object) -> list[str]:
     if value is None:
-        return list(TRIGGER_TYPES)
+        return list(DEFAULT_ENABLED_TRIGGERS)
     if isinstance(value, str):
         items = [value]
     elif isinstance(value, (list, tuple, set)):
