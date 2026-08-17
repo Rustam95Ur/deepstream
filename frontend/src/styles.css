@@ -707,17 +707,7 @@ span.flatpickr-weekday {
 .trigger-row:first-child { padding-top: 0.15rem; }
 .trigger-row:last-child { border-bottom: 0; padding-bottom: 0.15rem; }
 .trigger-row .lede { margin: 0; }
-.preset-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-.preset-row button.on {
-  background: var(--primary-light);
-  color: var(--primary);
-}
-.preset-count { margin: 0 0 1rem; }
+.algo-count { margin: 0 0 1rem; }
 .algo-table { width: 100%; }
 .algo-table th {
   color: var(--muted);

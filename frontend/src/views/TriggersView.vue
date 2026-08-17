@@ -2,13 +2,10 @@
 import Field from "../components/Field.vue";
 import SwitchField from "../components/SwitchField.vue";
 import {
-  PRESETS,
   SCHOOL_ALGORITHMS,
   algorithmIsOn,
-  presetIsActive,
   selectedAlgorithmCount,
   setAlgorithm,
-  triggersFromAlgorithms,
 } from "../schoolAlgorithms";
 import { saveSettings, store } from "../store";
 
@@ -23,13 +20,6 @@ function isOn(id: string) {
 function setOn(id: string, on: boolean) {
   if (!store.settings) return;
   store.settings.enabled_triggers = setAlgorithm(currentTriggers(), id, on);
-}
-
-function applyPreset(id: string) {
-  if (!store.settings) return;
-  const preset = PRESETS.find((item) => item.id === id);
-  if (!preset) return;
-  store.settings.enabled_triggers = triggersFromAlgorithms(preset.algorithms);
 }
 
 function fightOn() {
@@ -48,20 +38,7 @@ function fightOn() {
         </p>
       </div>
       <div class="card-body">
-        <div class="preset-row">
-          <button
-            v-for="preset in PRESETS"
-            :key="preset.id"
-            type="button"
-            class="ghost"
-            :class="{ on: presetIsActive(currentTriggers(), preset.id) }"
-            :title="preset.hint"
-            @click="applyPreset(preset.id)"
-          >
-            {{ preset.label }}
-          </button>
-        </div>
-        <p class="lede preset-count">
+        <p class="lede algo-count">
           Выбрано {{ selectedAlgorithmCount(currentTriggers()) }} из {{ SCHOOL_ALGORITHMS.length }}
         </p>
         <table class="algo-table">

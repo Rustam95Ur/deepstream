@@ -67,23 +67,6 @@ export const SCHOOL_ALGORITHMS = [
   },
 ] as const;
 
-export type SchoolAlgorithmId = (typeof SCHOOL_ALGORITHMS)[number]["id"];
-
-export const PRESETS = [
-  {
-    id: "safe_school",
-    label: "Safe School",
-    hint: "Коридоры днём: только сходка/драка, без одиночного прохожего.",
-    algorithms: ["fight"] as SchoolAlgorithmId[],
-  },
-  {
-    id: "night_corridor",
-    label: "Ночной коридор",
-    hint: "Сходка/драка и человек в кадре.",
-    algorithms: ["fight", "presence"] as SchoolAlgorithmId[],
-  },
-] as const;
-
 export function algorithmIsOn(triggers: readonly string[], algoId: string): boolean {
   const algo = SCHOOL_ALGORITHMS.find((item) => item.id === algoId);
   if (!algo) return false;
@@ -104,31 +87,6 @@ export function setAlgorithm(
     for (const t of algo.triggers) next.delete(t);
   }
   return NODE_TRIGGERS.filter((t) => next.has(t));
-}
-
-export function triggersFromAlgorithms(algoIds: readonly string[]): string[] {
-  const next = new Set<string>();
-  for (const algo of SCHOOL_ALGORITHMS) {
-    if (algoIds.includes(algo.id)) {
-      for (const t of algo.triggers) next.add(t);
-    }
-  }
-  return NODE_TRIGGERS.filter((t) => next.has(t));
-}
-
-export function sameTriggerSet(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) return false;
-  const left = new Set(a);
-  return b.every((item) => left.has(item));
-}
-
-export function presetIsActive(
-  triggers: readonly string[],
-  presetId: string,
-): boolean {
-  const preset = PRESETS.find((item) => item.id === presetId);
-  if (!preset) return false;
-  return sameTriggerSet(triggers, triggersFromAlgorithms(preset.algorithms));
 }
 
 export function selectedAlgorithmCount(triggers: readonly string[]): number {
