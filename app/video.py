@@ -17,6 +17,7 @@ from app.ds.log_buffer import snapshot as log_snapshot
 from app.ds.ring_buffer import get_ring_buffer
 from app.history import get_history_writer
 from app.schemas import LogLineOut, RingCameraHealthOut, VideoHealthOut, WorkerStatusOut
+from app.minio_store import advertised_public_base
 from app.storage import get_store
 from app.video_auth import require_video_token, video_token
 from app.webhooks import get_outbound_worker
@@ -153,10 +154,11 @@ async def lifespan(_app: FastAPI):
     get_ring_buffer().start()
     settings = get_store().get_settings()
     logger.info(
-        "Nexus DeepStream video node_id=%s auto_start=%s token=%s",
+        "Nexus DeepStream video node_id=%s auto_start=%s token=%s campus_clips=%s",
         settings.node_id,
         settings.auto_start_pipeline,
         "on" if video_token() else "off",
+        advertised_public_base(),
     )
     if settings.auto_start_pipeline:
         get_manager().start()

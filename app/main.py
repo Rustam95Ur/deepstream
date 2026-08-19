@@ -19,6 +19,7 @@ from app.api.node import router as node_router
 from app.api.users import router as users_router
 from app.api.webhooks import router as webhooks_router
 from app.db import init_db
+from app.minio_store import advertised_public_base
 from app.storage import get_store
 from app.web import SPA_DIR, router as web_router
 from app.webhooks import get_outbound_worker, seed_webhooks_from_settings
@@ -37,10 +38,11 @@ async def lifespan(_app: FastAPI):
     settings = store.get_settings()
     seed_webhooks_from_settings(settings)
     logger.info(
-        "Nexus DeepStream API v%s node_id=%s data=%s",
+        "Nexus DeepStream API v%s node_id=%s data=%s campus_clips=%s",
         __version__,
         settings.node_id,
         store.data_dir,
+        advertised_public_base(),
     )
     get_outbound_worker().start()
     yield

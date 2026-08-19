@@ -53,7 +53,7 @@ Open http://127.0.0.1:5173
 
 ## GPU container (Docker Compose)
 
-1. Optionally `cp .env.example .env` and adjust ports/paths.
+1. `.env` is optional. On one Ubuntu host with Campus, clip URLs default to `http://172.17.0.1:8080` (docker0 / host-gateway).
 2. Build and run:
 
 ```bash
@@ -221,19 +221,11 @@ On an incident trigger the node waits `post_s`, concatenates ring-buffer segment
 
 Campus downloads `behaviour.video_url` as HTTP(S) for DeepStream cameras, or Digest from a SmartBox. Known types skip VLM; unknown codes are stored as-is for later labelling.
 
-Do **not** put MinIO `127.0.0.1:9200` in `video_url`. Campus is another container, so that address is Campus itself (`Connection refused`). Clips are `GET http://<host-ip>:8080/api/v1/public/clips/{event_id}.mp4`.
+Do **not** put MinIO `127.0.0.1:9200` in `video_url`. Campus is another container, so that address is Campus itself (`Connection refused`).
 
-On **Ubuntu** `host.docker.internal` does not exist. Set the LAN IP of the DeepStream server (the one nginx publishes on):
+**Default (no `.env`, same Ubuntu as Campus):** `http://172.17.0.1:8080/api/v1/public/clips/{event_id}.mp4` — docker0, reachable from Campus on this machine.
 
-```bash
-hostname -I | awk '{print $1}'
-```
-
-```env
-NEXUS_DS_PUBLIC_URL=http://10.0.0.12:8080
-```
-
-Same machine as Campus: that host IP still works from Campus's container. Two Ubuntu servers: use the DeepStream server's IP, not Campus. Recreate api+video after changing `.env`. Already-ingested Campus rows keep the old URL; resend from History.
+Two servers: `NEXUS_DS_PUBLIC_URL=http://<deepstream-lan-ip>:8080`. Recreate api+video after changing it. Already-ingested Campus rows keep the old URL; resend from History.
 
 ## Multi-node with one Django
 

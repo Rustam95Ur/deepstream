@@ -6,7 +6,6 @@ import logging
 import os
 import re
 import socket
-import struct
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
@@ -91,28 +90,19 @@ def _resolve_ipv4(host: str) -> str:
     return ip if ip not in LOOPBACK_HOSTS else ""
 
 
-def _default_gateway_ipv4() -> str:
-    try:
-        with open("/proc/net/route", encoding="utf-8") as fh:
-            next(fh, None)
-            for line in fh:
-                parts = line.split()
-                if len(parts) >= 3 and parts[1] == "00000000":
-                    ip = socket.inet_ntoa(struct.pack("<I", int(parts[2], 16)))
-                    if ip and ip not in LOOPBACK_HOSTS:
-                        return ip
-    except (OSError, ValueError):
-        return ""
-    return ""
-
-
 def host_ipv4_for_campus() -> str:
-    """IPv4 of this Docker host as seen from a sibling compose stack (Ubuntu)."""
+    """
+    IPv4 of this Docker host as seen from Campus on the same Ubuntu machine.
+
+    Prefer ``host.docker.internal`` (compose ``extra_hosts: host-gateway``), then
+    docker0 ``172.17.0.1``. Do not use the compose overlay gateway (172.18+) —
+    Campus is on another network and cannot reach it.
+    """
     for name in ("host.docker.internal", "gateway.docker.internal"):
         ip = _resolve_ipv4(name)
         if ip:
             return ip
-    return _default_gateway_ipv4() or "172.17.0.1"
+    return "172.17.0.1"
 
 
 def _host_unreachable_from_campus(host: str) -> bool:
@@ -144,13 +134,14 @@ def advertised_public_base() -> str:
         advertised = f"http://{ip}:{port}"
     if advertised != raw and not _advertised_base_warned:
         _advertised_base_warned = True
-        logger.warning(
-            "Advertising clip base %s to Campus (NEXUS_DS_PUBLIC_URL=%r). "
-            "On Ubuntu set NEXUS_DS_PUBLIC_URL=http://<this-server-lan-ip>:%s",
-            advertised,
-            raw,
-            port,
-        )
+        if raw and _host_unreachable_from_campus(host):
+            logger.warning(
+                "NEXUS_DS_PUBLIC_URL=%r is not reachable from Campus; using %s",
+                raw,
+                advertised,
+            )
+        else:
+            logger.info("Campus clip base %s (no .env NEXUS_DS_PUBLIC_URL needed)", advertised)
     return advertised
 
 

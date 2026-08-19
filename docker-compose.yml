@@ -1,4 +1,6 @@
 services:
+  # No .env required. Clip URLs default to http://<host-gateway>:8080
+  # (Ubuntu docker0, usually 172.17.0.1) so Campus on this machine can GET them.
   postgres:
     image: postgres:16-alpine
     container_name: nexus-deepstream-postgres
