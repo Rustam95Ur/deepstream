@@ -14,6 +14,7 @@ from app.api.auth import router as auth_router
 from app.api.cameras import router as cameras_router
 from app.api.errors import register_error_handlers
 from app.api.history import router as history_router
+from app.api.public_clips import router as public_clips_router
 from app.api.node import router as node_router
 from app.api.users import router as users_router
 from app.api.webhooks import router as webhooks_router
@@ -64,6 +65,7 @@ spa_assets = SPA_DIR / "assets"
 if spa_assets.is_dir():
     app.mount("/assets", StaticFiles(directory=str(spa_assets)), name="spa-assets")
 
+app.include_router(public_clips_router)
 app.include_router(auth_router)
 app.include_router(node_router)
 app.include_router(cameras_router)

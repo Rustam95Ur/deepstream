@@ -11,7 +11,7 @@ from sqlalchemy import select, tuple_
 from app.api import ApiAuth
 from app.db import db_enabled, session_scope
 from app.ds.payload import clip_from_payload, normalize_payload
-from app.minio_store import get_minio_store
+from app.minio_store import campus_clip_url, get_minio_store
 from app.models import OutboundJobRow, SendEventRow, TriggerEventRow
 from app.paging import cursor_or_400, cursor_str, cursor_time, encode_cursor
 from app.schemas import (
@@ -156,9 +156,9 @@ def get_trigger_clip(event_id: str) -> ClipUrlOut:
         if row is None:
             raise HTTPException(status_code=404, detail="Event not found")
         clip = clip_from_payload(dict(row.payload or {}))
-    url = clip["url"]
-    if clip["key"]:
-        url = get_minio_store().object_url(clip["key"]) or url
+    url = campus_clip_url(event_id) or clip["url"]
+    if not url and clip["key"]:
+        url = get_minio_store().object_url(clip["key"])
     return ClipUrlOut(event_id=event_id, url=url, bucket=clip["bucket"], key=clip["key"])
 
 

@@ -107,13 +107,7 @@ async function loadAll() {
 
 async function openClip(row: TriggerEvent) {
   playing.value = row;
-  playUrl.value = row.video_url || row.clip?.url || "";
-  try {
-    const clip = await api.triggerClip(row.event_id);
-    if (clip.url) playUrl.value = clip.url;
-  } catch {
-    /* keep stored url */
-  }
+  playUrl.value = `/api/v1/public/clips/${encodeURIComponent(row.event_id)}.mp4`;
 }
 
 function closeClip() {

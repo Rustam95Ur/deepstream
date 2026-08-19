@@ -19,13 +19,12 @@ def _float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-# Campus ``behaviour.algo_model`` → Incident. Fight-like DS triggers use the
-# SmartBox name operators already filter on; VLM still runs (only SmokingAlarm
-# bypasses). ``stream_silent`` has no algo_model → SmartBoxLog.
+# Campus types (incident_type). Unknown trigger names are sent as-is.
 _ALGO_MODEL = {
-    "vif": "FightingAlarm",
-    "convergence": "FightingAlarm",
-    "presence": "presence",
+    "vif": "Драки",
+    "convergence": "Драки",
+    "fall": "Падение",
+    "smoke": "Курение",
 }
 
 _DEFAULT_RTSP_PORTS = {554, 80, 443}
@@ -141,16 +140,39 @@ def _time_received(ts: int) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
 
 
+def _refresh_campus_video_url(event_id: str, video_url: str, *, has_clip: bool) -> str:
+    eid = _str(event_id)
+    url = _str(video_url)
+    if not eid or not (url or has_clip):
+        return url
+    from app.minio_store import campus_clip_url
+
+    return campus_clip_url(eid) or url
+
+
 def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
     """
     Campus ``POST /api/v1/school/incident-ingest/`` body.
 
     Same shape as a SmartBox alert: envelope + ``alert_info`` with
     ``channel_info`` / ``behaviour.algo_model`` / ``behaviour.video_url``.
-    Already-wrapped payloads are returned unchanged.
+    Already-wrapped payloads are returned unchanged except ``video_url``,
+    which is always rewritten to a Campus-reachable clip URL.
     """
     if isinstance(payload.get("alert_info"), dict):
-        return payload
+        out = dict(payload)
+        alert = dict(payload["alert_info"] or {})
+        behaviour = dict(alert.get("behaviour") or {})
+        video_url = _refresh_campus_video_url(
+            _str(payload.get("event_id")),
+            _str(behaviour.get("video_url")),
+            has_clip=bool(_str(behaviour.get("video_url"))),
+        )
+        if video_url:
+            behaviour["video_url"] = video_url
+            alert["behaviour"] = behaviour
+            out["alert_info"] = alert
+        return out
     body = normalize_payload(payload)
     trigger = _str(body.get("trigger_type"))
     ts = _capture_unix(_str(body.get("trigger_time")))
@@ -159,7 +181,13 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
         _str(body.get("camera_uri"))
     )
     device_name = _str(body.get("node_id")) or "nexus-deepstream"
-    video_url = _str(body.get("video_url"))
+    event_id = _str(body.get("event_id"))
+    clip = clip_from_payload(body)
+    video_url = _refresh_campus_video_url(
+        event_id,
+        _str(body.get("video_url")),
+        has_clip=bool(clip["key"] or clip["url"]),
+    )
     incident = trigger not in {"", "stream_silent"}
     behaviour: dict[str, Any] = {"capture_time": ts}
     if video_url:
@@ -179,10 +207,10 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
         "behaviour": behaviour,
     }
     envelope: dict[str, Any] = {
+        "source": "nexus_deepstream",
         "time_received": _time_received(ts),
         "alert_info": alert_info,
     }
-    event_id = _str(body.get("event_id"))
     if event_id:
         envelope["event_id"] = event_id
     return envelope

@@ -182,7 +182,7 @@ Content-Type: application/json
 }
 ```
 
-`main_uri`, `uri`, and `rtsp_url` are the same field. The node also answers `GET /api/v1/cameras` so Campus can import like a SmartBox `channel/list`. Outbound webhooks are the other direction: this node POSTs **SmartBox-shaped** alerts to Django `POST /api/v1/school/incident-ingest/` (no Campus contract change).
+`main_uri`, `uri`, and `rtsp_url` are the same field. The node also answers `GET /api/v1/cameras` so Campus can import like a SmartBox `channel/list`. Outbound webhooks are the other direction: this node POSTs SmartBox-shaped alerts to Django `POST /api/v1/school/incident-ingest/`. Campus selects SmartBox vs Nexus DeepStream by the camera’s device. `INCIDENT_FIRST_LINE` is not used.
 
 ### Trigger payload (POST to each webhook)
 
@@ -192,10 +192,11 @@ Same envelope as a SmartBox device. Point the webhook at Campus ingest:
 
 Campus matches the camera by `channel_info.ipc_addr` ⊂ `Camera.rtsp_url`, else exact `channel_info.channel_name` = `Camera.name`. Keep those names/URLs in sync.
 
-`vif` / `convergence` → `behaviour.algo_model=FightingAlarm` (Incident + VLM). `presence` → `algo_model=presence`. `stream_silent` has no `algo_model` → `SmartBoxLog`.
+`vif` / `convergence` → `Драки`. `fall` → `Падение`. `smoke` → `Курение`. `presence` stays `presence`. `stream_silent` has no `algo_model` → `SmartBoxLog`.
 
 ```json
 {
+  "source": "nexus_deepstream",
   "time_received": "2026-08-17_19-40-12",
   "event_id": "...",
   "alert_info": {
@@ -206,9 +207,9 @@ Campus matches the camera by `channel_info.ipc_addr` ⊂ `Camera.rtsp_url`, else
       "ipc_addr": "10.0.0.12/stream1"
     },
     "behaviour": {
-      "algo_model": "FightingAlarm",
+      "algo_model": "Драки",
       "capture_time": 1723921212,
-      "video_url": "http://127.0.0.1:9200/incidents/incidents/ingest/...?X-Amz-..."
+      "video_url": "http://<ubuntu-lan-ip>:8080/api/v1/public/clips/<event_id>.mp4"
     }
   }
 }
@@ -218,7 +219,21 @@ Failed deliveries retry with backoff, then sit in the dead-letter queue until re
 
 On an incident trigger the node waits `post_s`, concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads the MP4 to MinIO, then enqueues POSTs. `stream_silent` skips the clip. The ring-buffer (`gst-launch` + `splitmuxsink`, ~3s segments) runs 24/7 for enabled RTSP cameras.
 
-Campus still tries to pull `behaviour.video_url` from the camera’s SmartBox with Digest auth. The MinIO URL is stored on the Incident (`source_alert_json`); auto-download works only if that camera is linked to a real SmartBox that can serve the path. Keep `INCIDENT_FIRST_LINE=smartbox` (default) or ingest incident-alerts are ACK’d and dropped.
+Campus downloads `behaviour.video_url` as HTTP(S) for DeepStream cameras, or Digest from a SmartBox. Known types skip VLM; unknown codes are stored as-is for later labelling.
+
+Do **not** put MinIO `127.0.0.1:9200` in `video_url`. Campus is another container, so that address is Campus itself (`Connection refused`). Clips are `GET http://<host-ip>:8080/api/v1/public/clips/{event_id}.mp4`.
+
+On **Ubuntu** `host.docker.internal` does not exist. Set the LAN IP of the DeepStream server (the one nginx publishes on):
+
+```bash
+hostname -I | awk '{print $1}'
+```
+
+```env
+NEXUS_DS_PUBLIC_URL=http://10.0.0.12:8080
+```
+
+Same machine as Campus: that host IP still works from Campus's container. Two Ubuntu servers: use the DeepStream server's IP, not Campus. Recreate api+video after changing `.env`. Already-ingested Campus rows keep the old URL; resend from History.
 
 ## Multi-node with one Django
 

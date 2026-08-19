@@ -100,8 +100,12 @@ services:
       NEXUS_DS_MINIO_REGION: ${NEXUS_DS_MINIO_REGION:-us-east-1}
       NEXUS_DS_MINIO_BUCKET: ${NEXUS_DS_MINIO_BUCKET:-incidents}
       NEXUS_DS_MINIO_KEY_PREFIX: ${NEXUS_DS_MINIO_KEY_PREFIX:-incidents/ingest/}
-      NEXUS_DS_MINIO_PUBLIC_URL: ${NEXUS_DS_MINIO_PUBLIC_URL:-http://127.0.0.1:9200}
+      NEXUS_DS_MINIO_PUBLIC_URL: ${NEXUS_DS_MINIO_PUBLIC_URL:-}
+      NEXUS_DS_PUBLIC_URL: ${NEXUS_DS_PUBLIC_URL:-}
+      NEXUS_DS_ADVERTISE_PORT: ${NEXUS_DS_PORT:-8080}
       DEEPSTREAM_DEBUG_DIR: /data/nexus_deepstream/debug
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - nexus-ds-data:/data/nexus_deepstream
     healthcheck:
@@ -159,7 +163,9 @@ services:
       NEXUS_DS_MINIO_REGION: ${NEXUS_DS_MINIO_REGION:-us-east-1}
       NEXUS_DS_MINIO_BUCKET: ${NEXUS_DS_MINIO_BUCKET:-incidents}
       NEXUS_DS_MINIO_KEY_PREFIX: ${NEXUS_DS_MINIO_KEY_PREFIX:-incidents/ingest/}
-      NEXUS_DS_MINIO_PUBLIC_URL: ${NEXUS_DS_MINIO_PUBLIC_URL:-http://127.0.0.1:9200}
+      NEXUS_DS_MINIO_PUBLIC_URL: ${NEXUS_DS_MINIO_PUBLIC_URL:-}
+      NEXUS_DS_PUBLIC_URL: ${NEXUS_DS_PUBLIC_URL:-}
+      NEXUS_DS_ADVERTISE_PORT: ${NEXUS_DS_PORT:-8080}
       NEXUS_DS_UTC_OFFSET_HOURS: ${NEXUS_DS_UTC_OFFSET_HOURS:-5}
       NEXUS_DS_RING_SEGMENT_DIR: /data/nexus_deepstream/incident_ring_buffer
       NEXUS_DS_CLIPS_DIR: /data/nexus_deepstream/incident_clips
@@ -168,6 +174,8 @@ services:
       - ./models:/opt/nexus_deepstream/models
       - ./app:/opt/nexus_deepstream/app
       - ./shell:/opt/nexus_deepstream/shell:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     gpus: all
     ulimits:
       nofile:

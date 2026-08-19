@@ -9,7 +9,7 @@ from typing import Any
 from app.ds.clip import build_clip_from_payload
 from app.ds.config import CameraConfig
 from app.ds.payload import attach_clip, normalize_payload
-from app.minio_store import build_incident_object_key, get_minio_store
+from app.minio_store import build_incident_object_key, campus_clip_url, get_minio_store
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ class IncidentClipSink:
             )
             return
 
-        url = store.object_url(key)
+        url = campus_clip_url(event_id) or store.object_url(key)
         attach_clip(
             payload,
             url=url or "",
