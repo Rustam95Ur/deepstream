@@ -60,6 +60,11 @@ export interface CameraList {
   next_cursor?: string | null;
 }
 
+export interface CameraTestBatch {
+  cameras: Camera[];
+  created: number;
+}
+
 export interface CameraQuery {
   q?: string;
   enabled?: boolean;

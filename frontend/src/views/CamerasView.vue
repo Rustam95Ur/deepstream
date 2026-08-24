@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import DateRangeField from "../components/DateRangeField.vue";
 import Field from "../components/Field.vue";
@@ -7,7 +7,7 @@ import Pager from "../components/Pager.vue";
 import SwitchField from "../components/SwitchField.vue";
 import { ApiError, api } from "../api";
 import { PAGE_SIZE, useCursorPage } from "../cursorPage";
-import { flash, refreshCameras, store } from "../store";
+import { flash, refreshCameras, refreshWorker, store } from "../store";
 import type { Camera, CameraQuery } from "../types";
 import { cameraProfile, resolutionLabel } from "../cameraProfile";
 
@@ -21,6 +21,7 @@ const router = useRouter();
 const pendingDelete = ref<Camera | null>(null);
 const toggling = ref("");
 const loading = ref(false);
+const creatingTest = ref(false);
 const rows = ref<Camera[]>([]);
 const { cursor, canPrev, canNext, resetPage, setNext, goNext, goPrev } = useCursorPage();
 const filters = reactive({
@@ -29,6 +30,26 @@ const filters = reactive({
   from: "",
   to: "",
 });
+const testForm = reactive({
+  count: 4,
+  main_uri: "",
+});
+
+const maxStreams = computed(() => store.settings?.max_streams ?? 16);
+const remainingSlots = computed(() => Math.max(0, maxStreams.value - store.cameras.length));
+
+function closeTestCameras() {
+  store.testCamerasOpen = false;
+}
+
+watch(
+  () => store.testCamerasOpen,
+  (open) => {
+    if (open && !testForm.main_uri) {
+      testForm.count = Math.min(4, remainingSlots.value || 4);
+    }
+  },
+);
 
 function dayStart(date: string) {
   return new Date(`${date}T00:00:00`).toISOString();
@@ -113,6 +134,29 @@ async function confirmDelete() {
     await Promise.all([refreshCameras(), loadCameras()]);
   } catch (err) {
     store.error = err instanceof ApiError ? err.message : "Не удалось удалить";
+  }
+}
+
+async function createTestCameras() {
+  const uri = testForm.main_uri.trim();
+  const count = Math.trunc(Number(testForm.count) || 0);
+  if (!uri || count < 1 || creatingTest.value) return;
+  if (count > remainingSlots.value) {
+    store.error = `Можно добавить ещё ${remainingSlots.value} (max_streams=${maxStreams.value})`;
+    return;
+  }
+  creatingTest.value = true;
+  store.error = "";
+  try {
+    const data = await api.createTestCameras(count, uri);
+    store.testCamerasOpen = false;
+    testForm.main_uri = uri;
+    flash(`Создано тестовых камер: ${data.created}. Потоки уходят в pipeline.`);
+    await Promise.all([refreshCameras(), loadCameras(), refreshWorker().catch(() => undefined)]);
+  } catch (err) {
+    store.error = err instanceof ApiError ? err.message : "Не удалось создать тестовые камеры";
+  } finally {
+    creatingTest.value = false;
   }
 }
 
@@ -235,6 +279,54 @@ onMounted(() => {
           </div>
         </div>
       </div>
+    </div>
+
+    <div v-if="store.testCamerasOpen" class="modal-scrim" @click.self="closeTestCameras">
+      <form
+        class="card modal modal-form"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="test-cam-title"
+        @submit.prevent="createTestCameras"
+      >
+        <div class="card-head">
+          <h2 id="test-cam-title">Тестовые камеры</h2>
+          <p class="lede">
+            Одна ссылка на все потоки. Камеры включаются сразу и попадают в pipeline после reload.
+          </p>
+        </div>
+        <div class="card-body form-grid">
+          <Field
+            id="test-count"
+            v-model="testForm.count"
+            label="Количество"
+            type="number"
+            required
+            :min="1"
+            :max="remainingSlots || 1"
+            :hint="remainingSlots
+              ? `Свободно слотов: ${remainingSlots} из ${maxStreams}`
+              : `Лимит max_streams=${maxStreams} исчерпан. Поднимите его в Настройках.`"
+          />
+          <Field
+            id="test-uri"
+            v-model="testForm.main_uri"
+            class="span-2"
+            label="RTSP ссылка"
+            addon="rtsp://"
+            required
+            hint="Например rtsp://127.0.0.1:8554/cam1"
+          />
+        </div>
+        <div class="card-foot end">
+          <div class="row">
+            <button type="submit" :disabled="creatingTest || remainingSlots < 1">
+              {{ creatingTest ? "Создание…" : "Создать и добавить в пайп" }}
+            </button>
+            <button type="button" class="ghost" @click="closeTestCameras">Отмена</button>
+          </div>
+        </div>
+      </form>
     </div>
   </div>
 </template>

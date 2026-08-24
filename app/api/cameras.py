@@ -8,9 +8,26 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.api import CameraApiAuth
 from app.paging import cursor_id, cursor_or_400
-from app.schemas import CameraIn, CameraListOut, CameraOut, CameraPatch
+from app.schemas import (
+    CameraIn,
+    CameraListOut,
+    CameraOut,
+    CameraPatch,
+    CameraTestBatchIn,
+    CameraTestBatchOut,
+)
 from app.storage import Store, get_store
 from app.video_client import notify_reload
+
+_TEST_META = {
+    "test": True,
+    "stream_protocol": 2,
+    "resolution_width": 1280,
+    "resolution_height": 720,
+    "fps": 25,
+    "allow_preprocessing": False,
+    "usage_modules": [2],
+}
 
 router = APIRouter(prefix="/api/v1/cameras", tags=["cameras"], dependencies=[CameraApiAuth])
 
@@ -36,6 +53,19 @@ def _guard_capacity(store: Store, new_ids: set[str]) -> None:
             status_code=400,
             detail=f"max_streams={settings.max_streams} reached",
         )
+
+
+def _alloc_test_ids(existing_ids: set[str], count: int) -> list[str]:
+    ids: list[str] = []
+    n = 1
+    while len(ids) < count:
+        cam_id = f"test_{n}"
+        if cam_id not in existing_ids:
+            ids.append(cam_id)
+        n += 1
+        if n > 10_000:
+            raise HTTPException(status_code=400, detail="cannot allocate test camera ids")
+    return ids
 
 
 @router.get("", response_model=CameraListOut)
@@ -79,6 +109,39 @@ def list_cameras(
         updated_at=updated,
         next_cursor=next_cursor,
     )
+
+
+@router.post("/test-batch", response_model=CameraTestBatchOut, status_code=status.HTTP_201_CREATED)
+def create_test_cameras(body: CameraTestBatchIn) -> CameraTestBatchOut:
+    uri = body.main_uri.strip()
+    low = uri.lower()
+    if not (low.startswith("rtsp://") or low.startswith("file://")):
+        raise HTTPException(status_code=400, detail="нужна ссылка rtsp:// или file://")
+    store = get_store()
+    settings = store.get_settings()
+    existing = {c.id for c in store.list_cameras()}
+    free = settings.max_streams - len(existing)
+    if body.count > max(0, free):
+        raise HTTPException(
+            status_code=400,
+            detail=f"max_streams={settings.max_streams}, свободно слотов: {max(0, free)}",
+        )
+    ids = _alloc_test_ids(existing, body.count)
+    _guard_capacity(store, set(ids))
+    payloads = [
+        CameraIn(
+            id=cam_id,
+            name=f"Тест {cam_id.split('_', 1)[1]}",
+            main_uri=uri,
+            enabled=True,
+            meta=dict(_TEST_META),
+            enabled_triggers=None,
+        )
+        for cam_id in ids
+    ]
+    cams, created_n, _updated_n = store.upsert_many(payloads)
+    notify_reload()
+    return CameraTestBatchOut(cameras=cams, created=created_n)
 
 
 @router.get("/{camera_id}", response_model=CameraOut)

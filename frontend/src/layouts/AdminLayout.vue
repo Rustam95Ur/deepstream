@@ -78,6 +78,11 @@ function go(name: string) {
   router.push({ name });
 }
 
+function openTestCameras() {
+  store.testCamerasOpen = true;
+  if (route.name !== "cameras") go("cameras");
+}
+
 function isNavActive(name: string) {
   const current = String(route.name || "");
   if (name === "cameras") {
@@ -203,8 +208,9 @@ async function onStop() {
             {{ store.workerBusy && store.worker?.running ? "Остановка…" : "Остановить" }}
           </button>
         </div>
-        <div v-else-if="route.name === 'cameras'" class="toolbar-actions">
-          <button type="button" @click="go('camera-new')">Добавить</button>
+        <div v-else-if="isNavActive('cameras')" class="toolbar-actions">
+          <button type="button" class="ghost" @click="openTestCameras">Тестовые камеры</button>
+          <button v-if="route.name === 'cameras'" type="button" @click="go('camera-new')">Добавить</button>
         </div>
         <div v-else-if="route.name === 'users'" class="toolbar-actions">
           <button type="button" @click="go('user-new')">Добавить</button>

@@ -1,4 +1,4 @@
-import type { Camera, CameraList, CameraQuery, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
+import type { Camera, CameraList, CameraQuery, CameraTestBatch, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -79,6 +79,11 @@ export const api = {
     request<Camera>("/api/v1/cameras", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  createTestCameras: (count: number, main_uri: string) =>
+    request<CameraTestBatch>("/api/v1/cameras/test-batch", {
+      method: "POST",
+      body: JSON.stringify({ count, main_uri }),
     }),
   updateCamera: (id: string, body: Camera) =>
     request<Camera>(`/api/v1/cameras/${encodeURIComponent(id)}`, {

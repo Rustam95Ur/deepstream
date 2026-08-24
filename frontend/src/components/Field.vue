@@ -13,6 +13,8 @@ const props = withDefaults(
     readonly?: boolean;
     minlength?: number;
     maxlength?: number;
+    min?: number | string;
+    max?: number | string;
     hint?: string;
   }>(),
   { type: "text" },
@@ -50,6 +52,8 @@ function onInput(event: Event) {
         :readonly="readonly"
         :minlength="minlength"
         :maxlength="maxlength"
+        :min="min"
+        :max="max"
         @input="onInput"
       />
     </div>

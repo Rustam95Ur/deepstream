@@ -12,6 +12,7 @@ export const store = reactive({
   message: "",
   error: "",
   saving: false,
+  testCamerasOpen: false,
 });
 
 export const enabledCount = computed(

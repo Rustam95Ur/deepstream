@@ -161,6 +161,11 @@ async function removeHook(hook: Webhook) {
                 <td>создать или обновить</td>
               </tr>
               <tr>
+                <td>POST</td>
+                <td class="uri">/api/v1/cameras/test-batch</td>
+                <td>тестовые камеры (count + ссылка)</td>
+              </tr>
+              <tr>
                 <td>PUT</td>
                 <td class="uri">/api/v1/cameras/{id}</td>
                 <td>создать или обновить</td>

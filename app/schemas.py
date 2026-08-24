@@ -183,6 +183,36 @@ class CameraListOut(BaseModel):
     next_cursor: str | None = None
 
 
+class CameraTestBatchIn(BaseModel):
+    """Create N enabled cameras that share one RTSP/file URI."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    count: int = Field(..., ge=1, le=128, description="How many test cameras to create")
+    main_uri: str = Field(..., min_length=1, description="rtsp:// or file:// used by every camera")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _aliases(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        raw = dict(data)
+        uri = _first_str(raw.get("main_uri"), raw.get("uri"), raw.get("rtsp_url"), raw.get("url"))
+        if uri:
+            raw["main_uri"] = uri
+        return raw
+
+    @field_validator("main_uri", mode="before")
+    @classmethod
+    def _strip_uri(cls, v: object) -> str:
+        return str(v).strip() if v is not None else ""
+
+
+class CameraTestBatchOut(BaseModel):
+    cameras: list[CameraOut]
+    created: int
+
+
 class HealthOut(BaseModel):
     status: str
     node_id: str
