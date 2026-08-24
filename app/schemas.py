@@ -60,7 +60,7 @@ class CameraIn(BaseModel):
     external_id: str = Field(
         default="",
         max_length=128,
-        description="Optional Django Camera.pk once synced",
+        description="Optional Camera.pk once synced",
     )
     meta: dict[str, Any] = Field(default_factory=dict)
     enabled_triggers: list[str] | None = Field(
