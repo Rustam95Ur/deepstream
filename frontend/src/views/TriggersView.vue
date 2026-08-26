@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
 import Field from "../components/Field.vue";
 import SwitchField from "../components/SwitchField.vue";
 import {
@@ -7,6 +8,7 @@ import {
   selectedAlgorithmCount,
   setAlgorithm,
 } from "../schoolAlgorithms";
+import { ensureTriggerProfiles, profileField, setProfileField } from "../triggerThresholds";
 import { saveSettings, store } from "../store";
 
 function currentTriggers(): string[] {
@@ -25,6 +27,26 @@ function setOn(id: string, on: boolean) {
 function fightOn() {
   return isOn("fight");
 }
+
+function pf(kind: "presence" | "convergence" | "vif" | "stream_silent", key: string) {
+  if (!store.settings) return 0;
+  return profileField(store.settings, kind, key);
+}
+
+function setPf(
+  kind: "presence" | "convergence" | "vif" | "stream_silent",
+  key: string,
+  value: number,
+) {
+  if (!store.settings) return;
+  setProfileField(store.settings, kind, key, value);
+}
+
+onMounted(() => {
+  if (store.settings) {
+    store.settings = ensureTriggerProfiles(store.settings);
+  }
+});
 </script>
 
 <template>
@@ -70,18 +92,10 @@ function fightOn() {
 
     <section class="card">
       <div class="card-head">
-        <h2>Пороги</h2>
-        <p class="lede">Общие пауза и клип. Остальное — только для включённых сценариев.</p>
+        <h2>Общие параметры</h2>
+        <p class="lede">Детектор и клип — для всех сценариев. Пороги ниже — отдельно для каждого типа.</p>
       </div>
       <div class="card-body form-grid">
-        <Field
-          id="cooldown"
-          v-model="store.settings.cooldown_s"
-          label="Пауза между сработками, сек"
-          hint="Повтор того же типа с этой камеры не уйдёт раньше этой паузы."
-          type="number"
-          step="0.1"
-        />
         <Field
           id="conf"
           v-model="store.settings.conf_threshold"
@@ -106,79 +120,160 @@ function fightOn() {
           type="number"
           step="0.1"
         />
+      </div>
+    </section>
 
-        <template v-if="isOn('presence')">
-          <Field
-            id="presence-min"
-            v-model="store.settings.presence_min_people"
-            label="Мин. людей (присутствие)"
-            hint="Сколько человек должно быть в кадре одновременно."
-            type="number"
-          />
-          <Field
-            id="presence-sus"
-            v-model="store.settings.presence_sustain_s"
-            label="Удержание присутствия, сек"
-            hint="Сколько секунд подряд держать это число людей."
-            type="number"
-            step="0.1"
-          />
-        </template>
-        <template v-if="fightOn()">
+    <section v-if="isOn('presence')" class="card">
+      <div class="card-head">
+        <h2>Присутствие</h2>
+        <p class="lede">Свои пороги для сценария «Присутствие».</p>
+      </div>
+      <div class="card-body form-grid">
+        <Field
+          id="presence-min"
+          :model-value="pf('presence', 'presence_min_people')"
+          label="Мин. людей"
+          hint="Сколько человек должно быть в кадре одновременно."
+          type="number"
+          @update:model-value="(v) => setPf('presence', 'presence_min_people', Number(v))"
+        />
+        <Field
+          id="presence-sus"
+          :model-value="pf('presence', 'presence_sustain_s')"
+          label="Удержание, сек"
+          hint="Сколько секунд подряд держать это число людей."
+          type="number"
+          step="0.1"
+          @update:model-value="(v) => setPf('presence', 'presence_sustain_s', Number(v))"
+        />
+        <Field
+          id="presence-cooldown"
+          :model-value="pf('presence', 'cooldown_s')"
+          label="Пауза между сработками, сек"
+          type="number"
+          step="0.1"
+          @update:model-value="(v) => setPf('presence', 'cooldown_s', Number(v))"
+        />
+      </div>
+    </section>
+
+    <template v-if="fightOn()">
+      <section class="card">
+        <div class="card-head">
+          <h2>Драка — сходка</h2>
+          <p class="lede">Пороги для trigger type <code>convergence</code>.</p>
+        </div>
+        <div class="card-body form-grid">
           <Field
             id="min-tracks"
-            v-model="store.settings.min_tracks"
-            label="Мин. людей (сходка)"
-            hint="Минимум людей в кадре, чтобы считать сходку или пересечение."
+            :model-value="pf('convergence', 'min_tracks')"
+            label="Мин. людей"
+            hint="Минимум людей в кадре, чтобы считать сходку."
             type="number"
+            @update:model-value="(v) => setPf('convergence', 'min_tracks', Number(v))"
           />
           <Field
             id="converge"
-            v-model="store.settings.converge_dist_bh"
+            :model-value="pf('convergence', 'converge_dist_bh')"
             label="Дистанция схождения"
             hint="Насколько близко люди (в высотах бокса), чтобы считать «рядом»."
             type="number"
             step="0.1"
+            @update:model-value="(v) => setPf('convergence', 'converge_dist_bh', Number(v))"
+          />
+          <Field
+            id="speed"
+            :model-value="pf('convergence', 'speed_thresh_bh')"
+            label="Порог сближения"
+            hint="Насколько быстро люди должны сближаться."
+            type="number"
+            step="0.1"
+            @update:model-value="(v) => setPf('convergence', 'speed_thresh_bh', Number(v))"
           />
           <Field
             id="sustain"
-            v-model="store.settings.sustain_s"
-            label="Удержание схождения, сек"
+            :model-value="pf('convergence', 'sustain_s')"
+            label="Удержание, сек"
             hint="Сколько секунд держать сближение, прежде чем слать событие."
             type="number"
             step="0.1"
+            @update:model-value="(v) => setPf('convergence', 'sustain_s', Number(v))"
           />
           <Field
+            id="convergence-cooldown"
+            :model-value="pf('convergence', 'cooldown_s')"
+            label="Пауза между сработками, сек"
+            type="number"
+            step="0.1"
+            @update:model-value="(v) => setPf('convergence', 'cooldown_s', Number(v))"
+          />
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Драка — пересечение</h2>
+          <p class="lede">Пороги для trigger type <code>vif</code> (пересечение боксов).</p>
+        </div>
+        <div class="card-body form-grid">
+          <Field
             id="vif-iou"
-            v-model="store.settings.vif_iou_thresh"
+            :model-value="pf('vif', 'vif_iou_thresh')"
             label="Порог пересечения"
             hint="Насколько сильно боксы людей должны пересечься."
             type="number"
             step="0.01"
+            @update:model-value="(v) => setPf('vif', 'vif_iou_thresh', Number(v))"
           />
           <Field
             id="vif-sus"
-            v-model="store.settings.vif_sustain_s"
-            label="Удержание пересечения, сек"
+            :model-value="pf('vif', 'vif_sustain_s')"
+            label="Удержание, сек"
             hint="Сколько секунд держать пересечение боксов."
             type="number"
             step="0.1"
+            @update:model-value="(v) => setPf('vif', 'vif_sustain_s', Number(v))"
           />
-        </template>
-        <template v-if="isOn('stream_silent')">
           <Field
-            id="silent"
-            v-model="store.settings.stream_silent_s"
-            label="Тишина потока, сек"
-            hint="Нет кадров дольше этого — событие «камера молчит»."
+            id="vif-cooldown"
+            :model-value="pf('vif', 'cooldown_s')"
+            label="Пауза между сработками, сек"
             type="number"
             step="0.1"
+            @update:model-value="(v) => setPf('vif', 'cooldown_s', Number(v))"
           />
-        </template>
+        </div>
+      </section>
+    </template>
+
+    <section v-if="isOn('stream_silent')" class="card">
+      <div class="card-head">
+        <h2>Камера молчит</h2>
+        <p class="lede">Свои пороги для технического сценария «тишина потока».</p>
       </div>
-      <div class="card-foot end">
-        <button type="submit" :disabled="store.saving">Сохранить</button>
+      <div class="card-body form-grid">
+        <Field
+          id="silent"
+          :model-value="pf('stream_silent', 'stream_silent_s')"
+          label="Тишина потока, сек"
+          hint="Нет кадров дольше этого — событие «камера молчит»."
+          type="number"
+          step="0.1"
+          @update:model-value="(v) => setPf('stream_silent', 'stream_silent_s', Number(v))"
+        />
+        <Field
+          id="silent-cooldown"
+          :model-value="pf('stream_silent', 'cooldown_s')"
+          label="Пауза между сработками, сек"
+          type="number"
+          step="0.1"
+          @update:model-value="(v) => setPf('stream_silent', 'cooldown_s', Number(v))"
+        />
       </div>
     </section>
+
+    <div class="card-foot end">
+      <button type="submit" :disabled="store.saving">Сохранить</button>
+    </div>
   </form>
 </template>

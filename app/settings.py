@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.trigger_thresholds import merge_trigger_thresholds, sync_flat_from_profiles
 from app.trigger_types import DEFAULT_ENABLED_TRIGGERS, normalize_enabled_triggers
 
 
@@ -63,10 +64,19 @@ class NodeSettings(BaseModel):
     auto_start_pipeline: bool = True
     max_streams: int = Field(default=16, ge=1, le=128)
 
+    # Per trigger-type thresholds (presence / convergence / vif / stream_silent).
+    trigger_thresholds: dict[str, dict[str, float | int]] = Field(default_factory=dict)
+
     @field_validator("enabled_triggers", mode="before")
     @classmethod
     def _enabled_triggers(cls, value: object) -> list[str]:
         return normalize_enabled_triggers(value)
+
+    @model_validator(mode="after")
+    def _normalize_threshold_profiles(self) -> NodeSettings:
+        self.trigger_thresholds = merge_trigger_thresholds(self, self.trigger_thresholds)
+        sync_flat_from_profiles(self)
+        return self
 
 
 class EnvBootstrap(BaseModel):

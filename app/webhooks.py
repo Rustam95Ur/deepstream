@@ -28,10 +28,6 @@ OPEN_STATUSES = ("pending", "retrying")
 MAX_BACKOFF_S = 60.0
 
 
-class LoginTakenError(Exception):
-    pass
-
-
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -89,16 +85,6 @@ def get_webhook(webhook_id: str) -> Webhook | None:
         return _from_row(row) if row else None
 
 
-def _login_taken(session, login: str, *, exclude_id: str = "") -> bool:
-    needle = (login or "").strip().lower()
-    if not needle:
-        return False
-    stmt = select(WebhookRow.id).where(func.lower(WebhookRow.login) == needle)
-    if exclude_id:
-        stmt = stmt.where(WebhookRow.id != exclude_id)
-    return session.scalar(stmt) is not None
-
-
 def authenticate_webhook_login(login: str, password: str) -> Webhook | None:
     name = (login or "").strip()
     secret = password or ""
@@ -133,8 +119,6 @@ def create_webhook(
     now = _utcnow()
     login_value = (login or "").strip()
     with session_scope(write=True) as session:
-        if _login_taken(session, login_value):
-            raise LoginTakenError
         row = WebhookRow(
             id=str(uuid4()),
             name=(name or "").strip() or "webhook",
@@ -169,8 +153,6 @@ def update_webhook(
             return None
         if login is not None:
             login_value = login.strip()
-            if _login_taken(session, login_value, exclude_id=webhook_id):
-                raise LoginTakenError
             row.login = login_value
         row.name = (name or "").strip() or row.name
         row.url = (url or "").strip()

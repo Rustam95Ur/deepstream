@@ -38,9 +38,19 @@ class TriggerConfig:
     presence_sustain_s: float = 2.0
     vif_iou_thresh: float = 0.25
     vif_sustain_s: float = 0.3
+    by_type: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def allows(self, kind: str) -> bool:
         return kind in self.enabled
+
+    def value(self, kind: str, key: str, fallback: float | int) -> float | int:
+        profile = self.by_type.get(kind) or {}
+        raw = profile.get(key)
+        if raw is None:
+            return fallback
+        if isinstance(fallback, int):
+            return int(raw)
+        return float(raw)
 
 
 @dataclass(slots=True)
@@ -111,6 +121,11 @@ def app_config_from_dict(raw: dict[str, Any]) -> AppConfig:
         presence_sustain_s=float(trig_raw.get("presence_sustain_s") or 2.0),
         vif_iou_thresh=float(trig_raw.get("vif_iou_thresh") or 0.25),
         vif_sustain_s=float(trig_raw.get("vif_sustain_s") or 0.3),
+        by_type={
+            k: dict(v)
+            for k, v in (trig_raw.get("by_type") or {}).items()
+            if isinstance(v, dict)
+        },
     )
     record = RecordConfig(
         clip_pre_s=float(rec_raw.get("clip_pre_s") or 5.0),
@@ -189,6 +204,7 @@ def app_config_from_settings(
             "presence_sustain_s": settings.presence_sustain_s,
             "vif_iou_thresh": settings.vif_iou_thresh,
             "vif_sustain_s": settings.vif_sustain_s,
+            "by_type": dict(settings.trigger_thresholds or {}),
         },
         "record": {
             "clip_pre_s": settings.clip_pre_s,

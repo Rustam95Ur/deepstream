@@ -8,7 +8,6 @@ from app.api import ApiAuth
 from app.db import db_enabled
 from app.schemas import WebhookIn, WebhookListOut, WebhookOut
 from app.webhooks import (
-    LoginTakenError,
     Webhook,
     create_webhook,
     delete_webhook,
@@ -53,18 +52,15 @@ def post_webhook(body: WebhookIn) -> WebhookOut:
         raise HTTPException(status_code=400, detail="Укажите логин для входящего API")
     if not body.password:
         raise HTTPException(status_code=400, detail="Укажите пароль для входящего API")
-    try:
-        hook = create_webhook(
-            name=body.name,
-            url=body.url,
-            enabled=body.enabled,
-            login=body.login,
-            password=body.password,
-            timeout_sec=body.timeout_sec,
-            max_retries=body.max_retries,
-        )
-    except LoginTakenError:
-        raise HTTPException(status_code=409, detail="Этот логин уже занят") from None
+    hook = create_webhook(
+        name=body.name,
+        url=body.url,
+        enabled=body.enabled,
+        login=body.login,
+        password=body.password,
+        timeout_sec=body.timeout_sec,
+        max_retries=body.max_retries,
+    )
     return _out(hook)
 
 
@@ -74,19 +70,16 @@ def put_webhook(webhook_id: str, body: WebhookIn) -> WebhookOut:
     existing = get_webhook(webhook_id)
     if existing and (body.login or existing.login) and not existing.auth_configured and not body.password:
         raise HTTPException(status_code=400, detail="Укажите пароль для входящего API")
-    try:
-        hook = update_webhook(
-            webhook_id,
-            name=body.name,
-            url=body.url,
-            enabled=body.enabled,
-            timeout_sec=body.timeout_sec,
-            max_retries=body.max_retries,
-            login=body.login or None,
-            password=body.password,
-        )
-    except LoginTakenError:
-        raise HTTPException(status_code=409, detail="Этот логин уже занят") from None
+    hook = update_webhook(
+        webhook_id,
+        name=body.name,
+        url=body.url,
+        enabled=body.enabled,
+        timeout_sec=body.timeout_sec,
+        max_retries=body.max_retries,
+        login=body.login or None,
+        password=body.password,
+    )
     if hook is None:
         raise HTTPException(status_code=404, detail="Webhook not found")
     return _out(hook)

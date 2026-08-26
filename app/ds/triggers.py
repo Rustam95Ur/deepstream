@@ -112,6 +112,9 @@ class TriggerEngine:
             return kind in cam.enabled_triggers
         return self.trigger.allows(kind)
 
+    def _t(self, kind: str, key: str, fallback: float | int) -> float | int:
+        return self.trigger.value(kind, key, fallback)
+
     def note_frame(self, pad_index: int, video_s: float | None = None) -> None:
         st = self.by_pad.get(pad_index)
         if st:
@@ -125,7 +128,14 @@ class TriggerEngine:
 
     def check_stream_silent(self) -> None:
         now = time.monotonic()
-        silent_s = self.app_cfg.pipeline.stream_silent_s
+        silent_s = float(
+            self._t(
+                "stream_silent",
+                "stream_silent_s",
+                self.app_cfg.pipeline.stream_silent_s,
+            )
+        )
+        cooldown = float(self._t("stream_silent", "cooldown_s", self.trigger.cooldown_s))
         for st in self.by_pad.values():
             if not self._allows(st.camera_id, "stream_silent"):
                 continue
@@ -133,7 +143,7 @@ class TriggerEngine:
                 continue
             if now - st.last_frame_ts < silent_s:
                 continue
-            if not st.cooled_down("stream_silent", self.trigger.cooldown_s, now):
+            if not st.cooled_down("stream_silent", cooldown, now):
                 continue
             self._emit(
                 st,
@@ -246,7 +256,11 @@ class TriggerEngine:
         *,
         raw_n: int,
     ) -> None:
-        need = self.trigger.presence_min_people
+        need = int(self._t("presence", "presence_min_people", self.trigger.presence_min_people))
+        sustain = float(
+            self._t("presence", "presence_sustain_s", self.trigger.presence_sustain_s)
+        )
+        cooldown = float(self._t("presence", "cooldown_s", self.trigger.cooldown_s))
         if len(people) >= need:
             st.presence_last_hit = now
             if st.presence_since is None:
@@ -256,10 +270,10 @@ class TriggerEngine:
                     st.camera_id,
                     len(people),
                     raw_n,
-                    self.trigger.presence_sustain_s,
+                    sustain,
                 )
-            elif (now - st.presence_since) >= self.trigger.presence_sustain_s:
-                if st.cooled_down("presence", self.trigger.cooldown_s, now):
+            elif (now - st.presence_since) >= sustain:
+                if st.cooled_down("presence", cooldown, now):
                     self._emit(
                         st,
                         trigger_type="presence",
@@ -273,19 +287,24 @@ class TriggerEngine:
                     )
                 st.presence_since = now
             return
-        if self._still_held(
-            st.presence_last_hit, now, self._miss_hold_s(self.trigger.presence_sustain_s)
-        ):
+        if self._still_held(st.presence_last_hit, now, self._miss_hold_s(sustain)):
             return
         st.presence_since = None
 
     def _eval_convergence(
         self, st: CameraTriggerState, people: list[Detection], now: float
     ) -> None:
-        if len(people) < self.trigger.min_tracks:
-            if not self._still_held(
-                st.converge_last_hit, now, self._miss_hold_s(self.trigger.sustain_s)
-            ):
+        min_tracks = int(self._t("convergence", "min_tracks", self.trigger.min_tracks))
+        converge_dist = float(
+            self._t("convergence", "converge_dist_bh", self.trigger.converge_dist_bh)
+        )
+        speed_thresh = float(
+            self._t("convergence", "speed_thresh_bh", self.trigger.speed_thresh_bh)
+        )
+        sustain = float(self._t("convergence", "sustain_s", self.trigger.sustain_s))
+        cooldown = float(self._t("convergence", "cooldown_s", self.trigger.cooldown_s))
+        if len(people) < min_tracks:
+            if not self._still_held(st.converge_last_hit, now, self._miss_hold_s(sustain)):
                 st.converge_since = None
             return
 
@@ -297,7 +316,7 @@ class TriggerEngine:
                 a, b = people[i], people[j]
                 dist = a.dist_bh(b)
                 best_dist = min(best_dist, dist)
-                if dist <= self.trigger.converge_dist_bh:
+                if dist <= converge_dist:
                     close = True
                     pa = st.prev_centers.get(a.track_id)
                     pb = st.prev_centers.get(b.track_id)
@@ -306,15 +325,15 @@ class TriggerEngine:
                             (a.bh + b.bh) / 2.0
                         )
                         speed = (prev_dist - dist) / max(now - max(pa[2], pb[2]), 1e-3)
-                        if speed >= self.trigger.speed_thresh_bh * 0.05:
+                        if speed >= speed_thresh * 0.05:
                             approaching = True
 
         if close and (approaching or self.trigger.mode == "convergence"):
             st.converge_last_hit = now
             if st.converge_since is None:
                 st.converge_since = now
-            elif (now - st.converge_since) >= self.trigger.sustain_s:
-                if st.cooled_down("convergence", self.trigger.cooldown_s, now):
+            elif (now - st.converge_since) >= sustain:
+                if st.cooled_down("convergence", cooldown, now):
                     self._emit(
                         st,
                         trigger_type="convergence",
@@ -325,39 +344,36 @@ class TriggerEngine:
                         },
                     )
                 st.converge_since = now
-        elif not self._still_held(
-            st.converge_last_hit, now, self._miss_hold_s(self.trigger.sustain_s)
-        ):
+        elif not self._still_held(st.converge_last_hit, now, self._miss_hold_s(sustain)):
             st.converge_since = None
 
     def _eval_vif(
         self, st: CameraTriggerState, people: list[Detection], now: float
     ) -> None:
+        iou_thresh = float(self._t("vif", "vif_iou_thresh", self.trigger.vif_iou_thresh))
+        sustain = float(self._t("vif", "vif_sustain_s", self.trigger.vif_sustain_s))
+        cooldown = float(self._t("vif", "cooldown_s", self.trigger.cooldown_s))
         if len(people) < 2:
-            if not self._still_held(
-                st.vif_last_hit, now, self._miss_hold_s(self.trigger.vif_sustain_s)
-            ):
+            if not self._still_held(st.vif_last_hit, now, self._miss_hold_s(sustain)):
                 st.vif_since = None
             return
         best_iou = 0.0
         for i in range(len(people)):
             for j in range(i + 1, len(people)):
                 best_iou = max(best_iou, people[i].iou(people[j]))
-        if best_iou >= self.trigger.vif_iou_thresh:
+        if best_iou >= iou_thresh:
             st.vif_last_hit = now
             if st.vif_since is None:
                 st.vif_since = now
-            elif (now - st.vif_since) >= self.trigger.vif_sustain_s:
-                if st.cooled_down("vif", self.trigger.cooldown_s, now):
+            elif (now - st.vif_since) >= sustain:
+                if st.cooled_down("vif", cooldown, now):
                     self._emit(
                         st,
                         trigger_type="vif",
                         evidence={"people": len(people), "iou": round(best_iou, 3)},
                     )
                 st.vif_since = now
-        elif not self._still_held(
-            st.vif_last_hit, now, self._miss_hold_s(self.trigger.vif_sustain_s)
-        ):
+        elif not self._still_held(st.vif_last_hit, now, self._miss_hold_s(sustain)):
             st.vif_since = None
 
     def _emit(

@@ -14,7 +14,7 @@ from urllib.parse import urlparse, urlunparse
 logger = logging.getLogger(__name__)
 
 DEFAULT_BUCKET = "incidents"
-DEFAULT_PREFIX = "incidents/ingest/"
+DEFAULT_PREFIX = "incidents/"
 DEFAULT_REGION = "us-east-1"
 DEFAULT_PRESIGN_EXPIRE_S = 7 * 24 * 3600
 DEFAULT_PUBLIC_PORT = "8080"
@@ -160,17 +160,20 @@ def build_incident_object_key(
     at: datetime | None = None,
     prefix: str = DEFAULT_PREFIX,
 ) -> str:
+    """MinIO key: ``{prefix}{DD-MM-YYYY}/{camera}/{HH}00/{HH:MM}-{event_id}.mp4``."""
     when = at if at is not None else datetime.now(timezone.utc)
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
     local = when.astimezone(timezone.utc) + timedelta(hours=utc_offset_hours())
     date_str = local.strftime("%d-%m-%Y")
     hour_folder = f"{local.strftime('%H')}00"
+    time_str = local.strftime("%H:%M")
     label = (camera_name or camera_id or "camera").strip() or "camera"
     safe_cam = re.sub(r"[^\w.-]+", "_", label)[:64]
     safe_ev = re.sub(r"[^\w.-]+", "_", event_id)[:80] or "event"
     root = (prefix or DEFAULT_PREFIX).strip("/")
-    return "/".join((root, date_str, safe_cam, hour_folder, f"{safe_ev}.mp4"))
+    filename = f"{time_str}-{safe_ev}.mp4"
+    return "/".join((root, date_str, safe_cam, hour_folder, filename))
 
 
 class MinioStore:

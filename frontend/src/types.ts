@@ -39,6 +39,12 @@ export interface NodeSettings {
   detector_model: string;
   auto_start_pipeline: boolean;
   max_streams: number;
+  trigger_thresholds?: Partial<
+    Record<
+      "presence" | "convergence" | "vif" | "stream_silent",
+      Record<string, number>
+    >
+  >;
 }
 
 export interface Camera {
