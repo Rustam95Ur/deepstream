@@ -50,10 +50,23 @@ def post_bytes(
             conn = http.client.HTTPConnection(host, port, timeout=timeout_sec)
         conn.request("POST", path, body=body, headers=req_headers)
         resp = conn.getresponse()
-        resp.read()
+        raw = resp.read() or b""
         status = int(resp.status)
         if status >= 400:
-            return False, status, f"HTTP {status}"
+            text = raw.decode("utf-8", errors="replace").strip()
+            text = " ".join(text.split())
+            if len(text) > 400:
+                text = text[:397] + "..."
+            detail = f"HTTP {status}"
+            if text:
+                detail = f"{detail}: {text}"
+            logger.warning(
+                "webhook POST url=%s status=%s body=%s",
+                target,
+                status,
+                text[:200],
+            )
+            return False, status, detail
         return True, status, ""
     except Exception as exc:
         logger.warning("webhook POST failed url=%s error=%s", target, exc)
@@ -76,7 +89,12 @@ def build_multipart(
     chunks: list[bytes] = []
     for name, value in fields.items():
         chunks.append(f"--{boundary}\r\n".encode())
-        chunks.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+        chunks.append(
+            (
+                f'Content-Disposition: form-data; name="{name}"\r\n'
+                "Content-Type: application/json; charset=utf-8\r\n\r\n"
+            ).encode()
+        )
         chunks.append(str(value).encode("utf-8"))
         chunks.append(b"\r\n")
     for name, (filename, data, content_type) in (files or {}).items():
