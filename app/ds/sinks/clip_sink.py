@@ -8,7 +8,7 @@ from typing import Any
 
 from app.ds.clip import build_clip_from_payload
 from app.ds.config import CameraConfig
-from app.ds.payload import attach_clip, normalize_payload
+from app.ds.payload import attach_clip, has_clip_source, normalize_payload, requires_video
 from app.minio_store import build_incident_object_key, campus_clip_url, get_minio_store
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ _SKIP_TRIGGER_TYPES = frozenset({"stream_silent"})
 class IncidentClipSink:
     """
     Campus rtsp_writer path: wait pre/post → concat ring-buffer segments →
-    MinIO → attach ``video_url`` / ``video_key`` / ``video_bucket`` → HTTP.
+    MinIO (optional) → attach clip → webhook with the MP4.
     """
 
     def __init__(
@@ -51,6 +51,31 @@ class IncidentClipSink:
             record_trigger(payload)
         except Exception:
             logger.exception("failed to persist trigger history")
+        if requires_video(payload) and not has_clip_source(payload):
+            evidence = payload.get("evidence") or {}
+            err = str(evidence.get("clip_error") or "")
+            if not err:
+                if not self._enabled:
+                    err = "clip recording disabled"
+                elif camera_id not in self._by_id:
+                    err = f"unknown camera_id={camera_id}"
+                else:
+                    err = "video required"
+            event_id = str(payload.get("event_id") or "")
+            logger.error("skip webhook event=%s camera=%s error=%s", event_id, camera_id, err)
+            try:
+                from app.history import record_send
+
+                record_send(
+                    event_id=event_id,
+                    sink="webhook",
+                    url="",
+                    status="skipped",
+                    error=err,
+                )
+            except Exception:
+                logger.exception("failed to record skipped webhook event=%s", event_id)
+            return event_id or None
         return self.inner.send(payload)
 
     def close(self) -> None:
@@ -65,7 +90,7 @@ class IncidentClipSink:
             return False
         if str(payload.get("trigger_type") or "") in _SKIP_TRIGGER_TYPES:
             return False
-        if payload.get("video_url") or payload.get("video_key"):
+        if has_clip_source(payload):
             return False
         camera_id = str(payload.get("camera_id") or "").strip()
         if camera_id not in self._by_id:
@@ -103,57 +128,66 @@ class IncidentClipSink:
             return
 
         path = Path(str(clip["clip_path"]))
-        if not store.enabled:
-            logger.warning("incident clip: MinIO is not configured — skip upload")
-            evidence = dict(payload.get("evidence") or {})
-            evidence["clip_error"] = "minio_not_configured"
-            payload["evidence"] = evidence
-            return
+        local_path = str(path)
+        key = ""
+        bucket = ""
+        url = campus_clip_url(event_id)
 
-        key = build_incident_object_key(
-            camera_id=camera_id,
-            camera_name=(cam.name if cam else camera_id) or camera_id,
-            event_id=event_id,
-            prefix=store.config.key_prefix,
-        )
-        if not store.upload_file(path, key):
-            evidence = dict(payload.get("evidence") or {})
-            evidence["clip_error"] = "minio_upload_failed"
-            payload["evidence"] = evidence
-            from app.history import record_send
-
-            record_send(
+        if store.enabled:
+            key = build_incident_object_key(
+                camera_id=camera_id,
+                camera_name=(cam.name if cam else camera_id) or camera_id,
                 event_id=event_id,
-                sink="minio",
-                url="",
-                status="error",
-                error="minio_upload_failed",
+                prefix=store.config.key_prefix,
             )
-            return
+            if store.upload_file(path, key):
+                bucket = store.config.bucket
+                url = url or store.object_url(key)
+                from app.history import record_send
 
-        url = campus_clip_url(event_id) or store.object_url(key)
+                record_send(
+                    event_id=event_id,
+                    sink="minio",
+                    url=url or key,
+                    status="ok",
+                )
+                try:
+                    path.unlink(missing_ok=True)
+                    local_path = ""
+                except OSError:
+                    logger.warning("incident clip: failed to remove local clip %s", path)
+            else:
+                evidence = dict(payload.get("evidence") or {})
+                evidence["clip_error"] = "minio_upload_failed"
+                payload["evidence"] = evidence
+                from app.history import record_send
+
+                record_send(
+                    event_id=event_id,
+                    sink="minio",
+                    url="",
+                    status="error",
+                    error="minio_upload_failed",
+                )
+                key = ""
+        else:
+            logger.warning(
+                "incident clip: MinIO is not configured — webhook will attach local file event=%s",
+                event_id,
+            )
+
         attach_clip(
             payload,
             url=url or "",
-            bucket=store.config.bucket,
+            bucket=bucket,
             key=key,
+            path=local_path,
         )
         logger.info(
-            "incident clip uploaded camera=%s event=%s key=%s segments=%s",
+            "incident clip ready camera=%s event=%s key=%s path=%s segments=%s",
             camera_id,
             event_id,
-            key,
+            key or "-",
+            local_path or "-",
             clip.get("segments"),
         )
-        from app.history import record_send
-
-        record_send(
-            event_id=event_id,
-            sink="minio",
-            url=url or key,
-            status="ok",
-        )
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            logger.warning("incident clip: failed to remove local clip %s", path)

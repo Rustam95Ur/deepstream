@@ -313,6 +313,17 @@ class MinioStore:
             parts.append(chunk)
         return b"".join(parts)
 
+    def get_object_bytes(self, key: str) -> bytes | None:
+        streamed = self.iter_object(key)
+        if streamed is None:
+            return None
+        chunks, _length = streamed
+        try:
+            return b"".join(chunks)
+        except Exception:
+            logger.exception("MinIO read failed key=%s", key)
+            return None
+
     def _presign_client(self) -> Any | None:
         """Sign against the advertised host so SigV4 ``Host`` matches the URL."""
         public = self.config.public_url

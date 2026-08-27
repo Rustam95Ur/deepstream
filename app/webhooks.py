@@ -7,6 +7,7 @@ import logging
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 OPEN_STATUSES = ("pending", "retrying")
 MAX_BACKOFF_S = 60.0
+VIDEO_POST_TIMEOUT_S = 60.0
 
 
 def _utcnow() -> datetime:
@@ -212,9 +214,65 @@ def _backoff_s(attempts: int) -> float:
     return float(min(MAX_BACKOFF_S, 2 ** max(0, attempts - 1)))
 
 
+def _clip_meta(payload: dict[str, Any]) -> dict[str, str]:
+    raw = payload.get(CLIP_META_KEY)
+    if isinstance(raw, dict):
+        return {k: str(v or "").strip() for k, v in raw.items() if str(v or "").strip()}
+    clip = clip_from_payload(payload)
+    return {k: v for k, v in clip.items() if v}
+
+
+def _split_outbound(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+    raw = dict(payload or {})
+    clip_meta = _clip_meta(raw)
+    raw.pop(CLIP_META_KEY, None)
+    outbound = to_smartbox_ingest(raw)
+    outbound.pop(CLIP_META_KEY, None)
+    return outbound, clip_meta
+
+
+def _read_clip_bytes(clip_meta: dict[str, str]) -> bytes | None:
+    path = (clip_meta.get("path") or "").strip()
+    if path:
+        file_path = Path(path)
+        if file_path.is_file():
+            try:
+                return file_path.read_bytes()
+            except OSError:
+                logger.exception("failed to read clip %s", file_path)
+    key = (clip_meta.get("key") or "").strip()
+    if key:
+        from app.minio_store import get_minio_store
+
+        data = get_minio_store().get_object_bytes(key)
+        if data:
+            return data
+    return None
+
+
+def _cleanup_local_clip(clip_meta: dict[str, str]) -> None:
+    path = (clip_meta.get("path") or "").strip()
+    if not path:
+        return
+    try:
+        Path(path).unlink(missing_ok=True)
+    except OSError:
+        logger.warning("failed to remove local clip %s", path)
+
+
 def enqueue_payload(payload: dict[str, Any], *, reason: str = "trigger") -> int:
     body = normalize_payload(payload)
     event_id = str(body.get("event_id") or "")
+    if requires_video(body) and not has_clip_source(body):
+        record_send(
+            event_id=event_id,
+            sink="webhook",
+            url="",
+            status="skipped",
+            error="video required",
+        )
+        logger.warning("skip webhook enqueue event=%s reason=%s: video required", event_id, reason)
+        return 0
     outbound = to_smartbox_ingest(body)
     clip = clip_from_payload(body)
     if clip.get("key"):
@@ -394,7 +452,7 @@ def _claim_jobs(limit: int = 8) -> list[str]:
                 .with_for_update(skip_locked=True)
             ).all()
         )
-        claim_at = now + timedelta(seconds=30)
+        claim_at = now + timedelta(seconds=max(30, int(VIDEO_POST_TIMEOUT_S) + 15))
         for row in rows:
             row.status = "retrying"
             row.next_attempt_at = claim_at
@@ -461,6 +519,7 @@ def process_job(job_id: str) -> None:
     )
     if ok:
         logger.info("webhook ok event=%s attempt=%s url=%s", event_id, attempts, url)
+        _cleanup_local_clip(_clip_meta(payload))
     elif final_status == "dead":
         logger.error(
             "webhook dead event=%s attempts=%s url=%s error=%s",

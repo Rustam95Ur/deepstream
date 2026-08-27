@@ -8,7 +8,7 @@ One Django Campus can attach multiple nodes (different GPUs / machines).
 - Local camera registry (`GET/POST/PUT/PATCH/DELETE /api/v1/cameras`) — Django pushes and pulls like SmartBox channels
 - Settings UI at `/` (Vue SPA behind nginx in Docker)
 - Multiple webhooks: retries, dead-letter queue, resend from history
-- Incident clip from the RTSP ring-buffer (Campus `rtsp_writer` path) uploaded to MinIO; payload always has `event_id`, `clip`, `video_url`
+- Incident clip from the RTSP ring-buffer; incident webhooks POST `multipart/form-data` (`payload` JSON + `video` MP4). No clip → webhook is not sent.
 - Per-camera enable/disable of `presence`, `convergence`, `vif`, `stream_silent` (or inherit node settings)
 - Pipeline runs in a separate GPU process when `pyservicemaker` is available
 
@@ -192,7 +192,14 @@ Same envelope as a SmartBox device. Point the webhook at Campus ingest:
 
 Campus matches the camera by `channel_info.ipc_addr` ⊂ `Camera.rtsp_url`, else exact `channel_info.channel_name` = `Camera.name`. Keep those names/URLs in sync.
 
-`vif` / `convergence` → `Драки`. `fall` → `Падение`. `smoke` → `Курение`. `presence` stays `presence`. `stream_silent` has no `algo_model` → `SmartBoxLog`.
+`vif` / `convergence` → `Драки`. `fall` → `Падение`. `smoke` → `Курение`. `presence` stays `presence`. `stream_silent` has no `algo_model` → `SmartBoxLog` (JSON only, no video).
+
+**Incidents always send the MP4.** The node waits `post_s`, concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads to MinIO when configured, then POSTs `multipart/form-data`:
+
+- `payload` — JSON string (SmartBox envelope below)
+- `video` — the MP4 clip
+
+Without a clip the webhook is skipped (history still records the trigger). `stream_silent` stays JSON.
 
 ```json
 {
@@ -217,7 +224,7 @@ Campus matches the camera by `channel_info.ipc_addr` ⊂ `Camera.rtsp_url`, else
 
 Failed deliveries retry with backoff, then sit in the dead-letter queue until resend from history. History on this node still stores the internal trigger (clip key, `trigger_type`).
 
-On an incident trigger the node waits `post_s`, concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads the MP4 to MinIO, then enqueues POSTs. `stream_silent` skips the clip. The ring-buffer (`gst-launch` + `splitmuxsink`, ~3s segments) runs 24/7 for enabled RTSP cameras.
+The ring-buffer (`gst-launch` + `splitmuxsink`, ~3s segments) runs 24/7 for enabled RTSP cameras.
 
 When a clip exists, the webhook is sent as **`multipart/form-data`**:
 

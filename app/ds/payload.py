@@ -53,12 +53,34 @@ def ipc_addr_from_uri(uri: str) -> str:
     return raw
 
 
+_SKIP_VIDEO_TRIGGERS = frozenset({"", "stream_silent"})
+CLIP_META_KEY = "_nexus_clip"
+
+
 def clip_from_payload(payload: dict[str, Any]) -> dict[str, str]:
     raw = payload.get("clip") if isinstance(payload.get("clip"), dict) else {}
-    url = _str(payload.get("video_url") or raw.get("url"))
-    bucket = _str(payload.get("video_bucket") or raw.get("bucket"))
-    key = _str(payload.get("video_key") or raw.get("key"))
-    return {"url": url, "bucket": bucket, "key": key}
+    extra = payload.get(CLIP_META_KEY) if isinstance(payload.get(CLIP_META_KEY), dict) else {}
+    url = _str(payload.get("video_url") or raw.get("url") or extra.get("url"))
+    bucket = _str(payload.get("video_bucket") or raw.get("bucket") or extra.get("bucket"))
+    key = _str(payload.get("video_key") or raw.get("key") or extra.get("key"))
+    path = _str(payload.get("clip_path") or raw.get("path") or extra.get("path"))
+    return {"url": url, "bucket": bucket, "key": key, "path": path}
+
+
+def requires_video(payload: dict[str, Any]) -> bool:
+    """Incident alerts must carry an MP4. ``stream_silent`` / errors do not."""
+    if _str(payload.get("category")) == "error":
+        return False
+    alert = payload.get("alert_info")
+    if isinstance(alert, dict):
+        behaviour = alert.get("behaviour") if isinstance(alert.get("behaviour"), dict) else {}
+        return bool(_str(behaviour.get("algo_model")))
+    return _str(payload.get("trigger_type")) not in _SKIP_VIDEO_TRIGGERS
+
+
+def has_clip_source(payload: dict[str, Any]) -> bool:
+    clip = clip_from_payload(payload)
+    return bool(clip["key"] or clip["path"])
 
 
 def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -111,14 +133,17 @@ def attach_clip(
     url: str = "",
     bucket: str = "",
     key: str = "",
+    path: str = "",
 ) -> dict[str, Any]:
     payload["video_url"] = _str(url)
     payload["video_bucket"] = _str(bucket)
     payload["video_key"] = _str(key)
+    payload["clip_path"] = _str(path)
     payload["clip"] = {
         "url": payload["video_url"],
         "bucket": payload["video_bucket"],
         "key": payload["video_key"],
+        "path": payload["clip_path"],
     }
     return payload
 
@@ -161,12 +186,14 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
     """
     if isinstance(payload.get("alert_info"), dict):
         out = dict(payload)
+        out.pop(CLIP_META_KEY, None)
         alert = dict(payload["alert_info"] or {})
         behaviour = dict(alert.get("behaviour") or {})
+        clip = clip_from_payload(payload)
         video_url = _refresh_campus_video_url(
             _str(payload.get("event_id")),
             _str(behaviour.get("video_url")),
-            has_clip=bool(_str(behaviour.get("video_url"))),
+            has_clip=bool(clip["key"] or clip["url"] or clip["path"] or _str(behaviour.get("video_url"))),
         )
         if video_url:
             behaviour["video_url"] = video_url
@@ -184,7 +211,7 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
     video_url = _refresh_campus_video_url(
         event_id,
         _str(body.get("video_url")),
-        has_clip=bool(clip["key"] or clip["url"]),
+        has_clip=bool(clip["key"] or clip["url"] or clip["path"]),
     )
     incident = trigger not in {"", "stream_silent"}
     behaviour: dict[str, Any] = {"capture_time": ts}

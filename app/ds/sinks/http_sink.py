@@ -7,11 +7,41 @@ import logging
 import ssl
 from typing import Any
 from urllib.parse import urlparse
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
 
-def post_json(
+def _encode_multipart(
+    fields: dict[str, str],
+    files: dict[str, tuple[str, bytes, str]],
+) -> tuple[bytes, str]:
+    boundary = f"----NexusDS{uuid4().hex}"
+    chunks: list[bytes] = []
+    for name, value in fields.items():
+        chunks.append(f"--{boundary}\r\n".encode("ascii"))
+        chunks.append(
+            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii")
+        )
+        chunks.append(value.encode("utf-8"))
+        chunks.append(b"\r\n")
+    for name, (filename, data, content_type) in files.items():
+        safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename) or "clip.mp4"
+        chunks.append(f"--{boundary}\r\n".encode("ascii"))
+        chunks.append(
+            (
+                f'Content-Disposition: form-data; name="{name}"; '
+                f'filename="{safe_name}"\r\n'
+                f"Content-Type: {content_type}\r\n\r\n"
+            ).encode("ascii")
+        )
+        chunks.append(data)
+        chunks.append(b"\r\n")
+    chunks.append(f"--{boundary}--\r\n".encode("ascii"))
+    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def _post(
     url: str,
     body: bytes,
     *,
@@ -131,6 +161,29 @@ def post_multipart(
         },
         timeout_sec=timeout_sec,
     )
+
+
+def post_json(
+    url: str,
+    body: bytes,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout_sec: float = 5.0,
+) -> tuple[bool, int | None, str]:
+    return _post(url, body, headers=headers, timeout_sec=timeout_sec)
+
+
+def post_multipart(
+    url: str,
+    *,
+    fields: dict[str, str],
+    files: dict[str, tuple[str, bytes, str]],
+    headers: dict[str, str] | None = None,
+    timeout_sec: float = 5.0,
+) -> tuple[bool, int | None, str]:
+    body, content_type = _encode_multipart(fields, files)
+    req_headers = {**(headers or {}), "Content-Type": content_type}
+    return _post(url, body, headers=req_headers, timeout_sec=timeout_sec)
 
 
 class HttpSink:
