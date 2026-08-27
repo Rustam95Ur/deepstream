@@ -8,7 +8,13 @@ from typing import Any
 
 from app.ds.clip import build_clip_from_payload
 from app.ds.config import CameraConfig
-from app.ds.payload import attach_clip, has_clip_source, normalize_payload, requires_video
+from app.ds.payload import (
+    attach_clip,
+    has_clip_source,
+    missing_video_reason,
+    normalize_payload,
+    requires_video,
+)
 from app.minio_store import build_incident_object_key, campus_clip_url, get_minio_store
 
 logger = logging.getLogger(__name__)
@@ -44,25 +50,34 @@ class IncidentClipSink:
                 payload["camera_name"] = cam.name or camera_id
         if self._should_clip(payload):
             self._attach_clip(payload)
+        elif requires_video(payload) and not has_clip_source(payload):
+            evidence = dict(payload.get("evidence") or {})
+            if not self._enabled:
+                evidence.setdefault("clip_error", "clip recording disabled")
+            elif camera_id not in self._by_id:
+                evidence.setdefault("clip_error", f"unknown camera_id={camera_id}")
+            payload["evidence"] = evidence
         payload.update(normalize_payload(payload))
+        skip_reason = missing_video_reason(payload)
+        if skip_reason:
+            evidence = dict(payload.get("evidence") or {})
+            evidence["webhook_video_error"] = skip_reason
+            payload["evidence"] = evidence
+            payload.update(normalize_payload(payload))
         try:
             from app.history import record_trigger
 
             record_trigger(payload)
         except Exception:
             logger.exception("failed to persist trigger history")
-        if requires_video(payload) and not has_clip_source(payload):
-            evidence = payload.get("evidence") or {}
-            err = str(evidence.get("clip_error") or "")
-            if not err:
-                if not self._enabled:
-                    err = "clip recording disabled"
-                elif camera_id not in self._by_id:
-                    err = f"unknown camera_id={camera_id}"
-                else:
-                    err = "video required"
+        if skip_reason:
             event_id = str(payload.get("event_id") or "")
-            logger.error("skip webhook event=%s camera=%s error=%s", event_id, camera_id, err)
+            logger.error(
+                "skip webhook event=%s camera=%s reason=%s",
+                event_id,
+                camera_id,
+                skip_reason,
+            )
             try:
                 from app.history import record_send
 
@@ -71,7 +86,7 @@ class IncidentClipSink:
                     sink="webhook",
                     url="",
                     status="skipped",
-                    error=err,
+                    error=skip_reason,
                 )
             except Exception:
                 logger.exception("failed to record skipped webhook event=%s", event_id)
@@ -151,11 +166,6 @@ class IncidentClipSink:
                     url=url or key,
                     status="ok",
                 )
-                try:
-                    path.unlink(missing_ok=True)
-                    local_path = ""
-                except OSError:
-                    logger.warning("incident clip: failed to remove local clip %s", path)
             else:
                 evidence = dict(payload.get("evidence") or {})
                 evidence["clip_error"] = "minio_upload_failed"

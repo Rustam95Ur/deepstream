@@ -12,53 +12,6 @@ from uuid import uuid4
 logger = logging.getLogger(__name__)
 
 
-def _encode_multipart(
-    fields: dict[str, str],
-    files: dict[str, tuple[str, bytes, str]],
-) -> tuple[bytes, str]:
-    boundary = f"----NexusDS{uuid4().hex}"
-    chunks: list[bytes] = []
-    for name, value in fields.items():
-        chunks.append(f"--{boundary}\r\n".encode("ascii"))
-        chunks.append(
-            f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii")
-        )
-        chunks.append(value.encode("utf-8"))
-        chunks.append(b"\r\n")
-    for name, (filename, data, content_type) in files.items():
-        safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename) or "clip.mp4"
-        chunks.append(f"--{boundary}\r\n".encode("ascii"))
-        chunks.append(
-            (
-                f'Content-Disposition: form-data; name="{name}"; '
-                f'filename="{safe_name}"\r\n'
-                f"Content-Type: {content_type}\r\n\r\n"
-            ).encode("ascii")
-        )
-        chunks.append(data)
-        chunks.append(b"\r\n")
-    chunks.append(f"--{boundary}--\r\n".encode("ascii"))
-    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
-
-
-def _post(
-    url: str,
-    body: bytes,
-    *,
-    headers: dict[str, str] | None = None,
-    timeout_sec: float = 5.0,
-) -> tuple[bool, int | None, str]:
-    return post_bytes(
-        url,
-        body,
-        headers={
-            "Content-Type": "application/json",
-            **(headers or {}),
-        },
-        timeout_sec=timeout_sec,
-    )
-
-
 def post_bytes(
     url: str,
     body: bytes,
@@ -119,9 +72,7 @@ def build_multipart(
     files: dict[str, tuple[str, bytes, str]] | None = None,
 ) -> tuple[bytes, str]:
     """Return ``(body, content_type)`` for ``multipart/form-data``."""
-    import uuid
-
-    boundary = f"----nexus{uuid.uuid4().hex}"
+    boundary = f"----nexus{uuid4().hex}"
     chunks: list[bytes] = []
     for name, value in fields.items():
         chunks.append(f"--{boundary}\r\n".encode())
@@ -129,11 +80,15 @@ def build_multipart(
         chunks.append(str(value).encode("utf-8"))
         chunks.append(b"\r\n")
     for name, (filename, data, content_type) in (files or {}).items():
+        safe_name = (
+            "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
+            or "clip.mp4"
+        )
         chunks.append(f"--{boundary}\r\n".encode())
         chunks.append(
             (
                 f'Content-Disposition: form-data; name="{name}"; '
-                f'filename="{filename}"\r\n'
+                f'filename="{safe_name}"\r\n'
                 f"Content-Type: {content_type}\r\n\r\n"
             ).encode()
         )
@@ -141,6 +96,24 @@ def build_multipart(
         chunks.append(b"\r\n")
     chunks.append(f"--{boundary}--\r\n".encode())
     return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def post_json(
+    url: str,
+    body: bytes,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout_sec: float = 5.0,
+) -> tuple[bool, int | None, str]:
+    return post_bytes(
+        url,
+        body,
+        headers={
+            **(headers or {}),
+            "Content-Type": "application/json",
+        },
+        timeout_sec=timeout_sec,
+    )
 
 
 def post_multipart(
@@ -156,34 +129,11 @@ def post_multipart(
         url,
         body,
         headers={
-            "Content-Type": content_type,
             **(headers or {}),
+            "Content-Type": content_type,
         },
         timeout_sec=timeout_sec,
     )
-
-
-def post_json(
-    url: str,
-    body: bytes,
-    *,
-    headers: dict[str, str] | None = None,
-    timeout_sec: float = 5.0,
-) -> tuple[bool, int | None, str]:
-    return _post(url, body, headers=headers, timeout_sec=timeout_sec)
-
-
-def post_multipart(
-    url: str,
-    *,
-    fields: dict[str, str],
-    files: dict[str, tuple[str, bytes, str]],
-    headers: dict[str, str] | None = None,
-    timeout_sec: float = 5.0,
-) -> tuple[bool, int | None, str]:
-    body, content_type = _encode_multipart(fields, files)
-    req_headers = {**(headers or {}), "Content-Type": content_type}
-    return _post(url, body, headers=req_headers, timeout_sec=timeout_sec)
 
 
 class HttpSink:
@@ -210,7 +160,6 @@ class HttpSink:
         event_id = str(payload.get("event_id") or "")
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers = {
-            "Content-Type": "application/json",
             "User-Agent": "nexus-deepstream/0.1",
         }
         if self.token:

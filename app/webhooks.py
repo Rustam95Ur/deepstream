@@ -19,6 +19,7 @@ from app.ds.payload import (
     CLIP_META_KEY,
     clip_from_payload,
     has_clip_source,
+    missing_video_reason,
     normalize_payload,
     requires_video,
     to_smartbox_ingest,
@@ -221,65 +222,20 @@ def _backoff_s(attempts: int) -> float:
     return float(min(MAX_BACKOFF_S, 2 ** max(0, attempts - 1)))
 
 
-def _clip_meta(payload: dict[str, Any]) -> dict[str, str]:
-    raw = payload.get(CLIP_META_KEY)
-    if isinstance(raw, dict):
-        return {k: str(v or "").strip() for k, v in raw.items() if str(v or "").strip()}
-    clip = clip_from_payload(payload)
-    return {k: v for k, v in clip.items() if v}
-
-
-def _split_outbound(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
-    raw = dict(payload or {})
-    clip_meta = _clip_meta(raw)
-    raw.pop(CLIP_META_KEY, None)
-    outbound = to_smartbox_ingest(raw)
-    outbound.pop(CLIP_META_KEY, None)
-    return outbound, clip_meta
-
-
-def _read_clip_bytes(clip_meta: dict[str, str]) -> bytes | None:
-    path = (clip_meta.get("path") or "").strip()
-    if path:
-        file_path = Path(path)
-        if file_path.is_file():
-            try:
-                return file_path.read_bytes()
-            except OSError:
-                logger.exception("failed to read clip %s", file_path)
-    key = (clip_meta.get("key") or "").strip()
-    if key:
-        from app.minio_store import get_minio_store
-
-        data = get_minio_store().get_object_bytes(key)
-        if data:
-            return data
-    return None
-
-
-def _cleanup_local_clip(clip_meta: dict[str, str]) -> None:
-    path = (clip_meta.get("path") or "").strip()
-    if not path:
-        return
-    try:
-        Path(path).unlink(missing_ok=True)
-    except OSError:
-        logger.warning("failed to remove local clip %s", path)
-
-
 def enqueue_payload(payload: dict[str, Any], *, reason: str = "trigger") -> int:
     body = normalize_payload(payload)
     event_id = str(body.get("event_id") or "")
     if requires_video(body) and not has_clip_source(body):
+        why = missing_video_reason(body) or "video required"
         record_send(
             event_id=event_id,
             sink="webhook",
             url="",
             status="skipped",
-            error="video required",
+            error=why,
         )
         logger.warning(
-            "skip webhook enqueue event=%s reason=%s: video required", event_id, reason
+            "skip webhook enqueue event=%s reason=%s: %s", event_id, reason, why
         )
         return 0
     outbound = to_smartbox_ingest(body)
@@ -379,15 +335,16 @@ def retry_job(job_id: str) -> OutboundJobRow | None:
 def _clip_bytes_for_event(
     event_id: str,
     payload: dict[str, Any] | None = None,
-) -> tuple[bytes, str] | None:
-    """Load incident MP4 from disk or MinIO for webhook multipart delivery."""
+) -> tuple[bytes | None, str, str]:
+    """Load incident MP4. Returns ``(data, filename, reason)``; reason set on failure."""
     raw = payload if isinstance(payload, dict) else {}
     nested = raw.get(CLIP_META_KEY) if isinstance(raw.get(CLIP_META_KEY), dict) else {}
-    path = (
-        str(nested.get("path") or "").strip()
-        or clip_from_payload(raw).get("path")
-        or ""
-    )
+    clip = clip_from_payload(raw)
+    path = str(nested.get("path") or clip.get("path") or "").strip()
+    key = str(nested.get("key") or clip.get("key") or "").strip()
+    why: list[str] = []
+    filename = _clip_filename(event_id)
+
     if path:
         file_path = Path(path)
         if file_path.is_file():
@@ -395,37 +352,49 @@ def _clip_bytes_for_event(
                 data = file_path.read_bytes()
             except OSError:
                 logger.exception("failed to read clip %s", file_path)
+                why.append(f"cannot read local file: {path}")
             else:
                 if data:
-                    return data, _clip_filename(event_id)
-    key = str(nested.get("key") or "").strip()
-    if not key:
-        key = clip_from_payload(raw).get("key") or ""
-    eid = (event_id or "").strip()
-    if not key and eid and db_enabled():
+                    return data, filename, ""
+                why.append(f"local clip is empty: {path}")
+        else:
+            why.append(f"local file missing: {path}")
+    else:
+        why.append("no local clip path")
+
+    if not key and event_id and db_enabled():
         with session_scope(write=False) as session:
             row = session.scalar(
-                select(TriggerEventRow).where(TriggerEventRow.event_id == eid)
+                select(TriggerEventRow).where(TriggerEventRow.event_id == event_id)
             )
             hist = dict(row.payload or {}) if row else {}
-        key = clip_from_payload(hist).get("key") or ""
+        hist_clip = clip_from_payload(hist)
+        key = hist_clip.get("key") or key
         if not path:
-            path = clip_from_payload(hist).get("path") or ""
+            path = hist_clip.get("path") or ""
             file_path = Path(path) if path else None
             if file_path is not None and file_path.is_file():
                 try:
                     data = file_path.read_bytes()
                 except OSError:
                     logger.exception("failed to read clip %s", file_path)
+                    why.append(f"cannot read history file: {path}")
                 else:
                     if data:
-                        return data, _clip_filename(eid)
-    if not key:
-        return None
-    data = get_minio_store().get_object_bytes(key)
-    if not data:
-        return None
-    return data, _clip_filename(eid)
+                        return data, filename, ""
+                    why.append(f"history clip is empty: {path}")
+            elif path:
+                why.append(f"history local file missing: {path}")
+
+    if key:
+        data = get_minio_store().get_object_bytes(key)
+        if data:
+            return data, filename, ""
+        why.append(f"minio read failed key={key}")
+    else:
+        why.append("no minio key")
+
+    return None, filename, "; ".join(why)
 
 
 def _clip_filename(event_id: str) -> str:
@@ -454,22 +423,32 @@ def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     if event_id:
         headers["X-Nexus-Event-Id"] = event_id
 
-    clip = _clip_bytes_for_event(
+    clip_data, filename, clip_why = _clip_bytes_for_event(
         event_id, job.payload if isinstance(job.payload, dict) else None
     )
     if requires_video(outbound) or requires_video(job.payload or {}):
-        if clip is None:
-            return False, None, "video required"
-        video_bytes, filename = clip
+        if not clip_data:
+            why = clip_why or missing_video_reason(job.payload or {}) or "video required"
+            logger.error("webhook skip video event=%s reason=%s", event_id, why)
+            return False, None, why
         send_timeout = max(float(timeout), VIDEO_POST_TIMEOUT_S)
+        logger.info(
+            "webhook multipart event=%s bytes=%s file=%s url=%s",
+            event_id,
+            len(clip_data),
+            filename,
+            url,
+        )
         return post_multipart(
             url,
             fields={"payload": json.dumps(outbound, ensure_ascii=False)},
-            files={"video": (filename, video_bytes, "video/mp4")},
+            files={"video": (filename, clip_data, "video/mp4")},
             headers=headers,
             timeout_sec=send_timeout,
         )
 
+    why = "video not required (stream_silent / no algo_model)"
+    logger.info("webhook json event=%s reason=%s url=%s", event_id, why, url)
     body = json.dumps(outbound, ensure_ascii=False).encode("utf-8")
     return post_json(url, body, headers=headers, timeout_sec=timeout)
 
@@ -555,8 +534,11 @@ def process_job(job_id: str) -> None:
     )
     if ok:
         logger.info("webhook ok event=%s attempt=%s url=%s", event_id, attempts, url)
-        path = str((payload.get(CLIP_META_KEY) or {}).get("path") or "").strip()
-        if path:
+        meta = payload.get(CLIP_META_KEY) if isinstance(payload.get(CLIP_META_KEY), dict) else {}
+        path = str((meta or {}).get("path") or "").strip()
+        key = str((meta or {}).get("key") or "").strip()
+        # Keep the local file when MinIO has no key — resend still needs it.
+        if path and key:
             try:
                 Path(path).unlink(missing_ok=True)
             except OSError:

@@ -203,6 +203,12 @@ function hasClip(row: TriggerEvent) {
   return Boolean(row.video_url || row.clip?.url || row.clip?.key || row.video_key);
 }
 
+function clipSkipReason(row: TriggerEvent) {
+  const ev = row.evidence || {};
+  const raw = ev.webhook_video_error || ev.clip_error;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : "";
+}
+
 async function openClip(row: TriggerEvent) {
   playing.value = row;
   playUrl.value = `/api/v1/public/clips/${encodeURIComponent(row.event_id)}.mp4`;
@@ -329,7 +335,7 @@ onMounted(() => {
                 <td>{{ triggerLabel(row.trigger_type) }}</td>
                 <td>
                   <button v-if="hasClip(row)" type="button" class="ghost" @click="openClip(row)">Смотреть</button>
-                  <span v-else class="muted">нет</span>
+                  <span v-else class="muted" :title="clipSkipReason(row)">{{ clipSkipReason(row) || "нет" }}</span>
                 </td>
                 <td class="td-action">
                   <button type="button" class="ghost" :disabled="busyId === row.event_id" @click="resend(row)">

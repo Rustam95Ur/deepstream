@@ -82,13 +82,30 @@ def requires_video(payload: dict[str, Any]) -> bool:
         behaviour = (
             alert.get("behaviour") if isinstance(alert.get("behaviour"), dict) else {}
         )
-        return bool(_str(behaviour.get("algo_model")))
+        return bool(_str(behaviour.get("algo_model"))) or alert.get("type") in {1, "1"}
     return _str(payload.get("trigger_type")) not in _SKIP_VIDEO_TRIGGERS
 
 
 def has_clip_source(payload: dict[str, Any]) -> bool:
     clip = clip_from_payload(payload)
     return bool(clip["key"] or clip["path"])
+
+
+def missing_video_reason(payload: dict[str, Any]) -> str:
+    """Why an incident webhook cannot include an MP4. Empty if video is not required."""
+    if not requires_video(payload):
+        return ""
+    clip = clip_from_payload(payload)
+    if clip["key"] or clip["path"]:
+        return ""
+    evidence = payload.get("evidence") if isinstance(payload.get("evidence"), dict) else {}
+    err = _str(evidence.get("webhook_video_error") or evidence.get("clip_error"))
+    if err:
+        return err
+    trigger = _str(payload.get("trigger_type"))
+    if trigger:
+        return f"no clip for trigger={trigger}"
+    return "no clip key and no local file"
 
 
 def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
