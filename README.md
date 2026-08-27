@@ -231,7 +231,7 @@ When a clip exists, the webhook is sent as **`multipart/form-data`**:
 - field `payload` — SmartBox JSON (same envelope as above, including `behaviour.video_url`)
 - file `video` — the MP4 bytes from MinIO
 
-If there is no clip (`stream_silent` or clip failed), the node still POSTs pure `application/json`.
+Incidents **require** the MP4: without a clip the webhook is not sent. `stream_silent` still POSTs pure `application/json`.
 
 Campus downloads `behaviour.video_url` as HTTP(S) for DeepStream cameras, or Digest from a SmartBox. When multipart `video` is present, Campus stores that file directly and skips the download. Known types skip VLM; unknown codes are stored as-is for later labelling.
 

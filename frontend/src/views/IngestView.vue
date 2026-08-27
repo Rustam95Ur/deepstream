@@ -209,12 +209,6 @@ Content-Type: application/json
     <section class="card">
       <div class="card-head">
         <h2>Webhook’и ({{ hooks.length }})</h2>
-        <p class="lede">
-          Исходящие сработки в формате SmartBox на
-          <code>POST /api/v1/school/incident-ingest/</code>.
-          Если есть клип — уходит <code>multipart/form-data</code>
-          (поле <code>payload</code> + файл <code>video</code>), иначе чистый JSON.
-        </p>
       </div>
       <div class="card-body">
         <div v-if="hooks.length" class="table-wrap">

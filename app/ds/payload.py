@@ -59,9 +59,15 @@ CLIP_META_KEY = "_nexus_clip"
 
 def clip_from_payload(payload: dict[str, Any]) -> dict[str, str]:
     raw = payload.get("clip") if isinstance(payload.get("clip"), dict) else {}
-    extra = payload.get(CLIP_META_KEY) if isinstance(payload.get(CLIP_META_KEY), dict) else {}
+    extra = (
+        payload.get(CLIP_META_KEY)
+        if isinstance(payload.get(CLIP_META_KEY), dict)
+        else {}
+    )
     url = _str(payload.get("video_url") or raw.get("url") or extra.get("url"))
-    bucket = _str(payload.get("video_bucket") or raw.get("bucket") or extra.get("bucket"))
+    bucket = _str(
+        payload.get("video_bucket") or raw.get("bucket") or extra.get("bucket")
+    )
     key = _str(payload.get("video_key") or raw.get("key") or extra.get("key"))
     path = _str(payload.get("clip_path") or raw.get("path") or extra.get("path"))
     return {"url": url, "bucket": bucket, "key": key, "path": path}
@@ -73,7 +79,9 @@ def requires_video(payload: dict[str, Any]) -> bool:
         return False
     alert = payload.get("alert_info")
     if isinstance(alert, dict):
-        behaviour = alert.get("behaviour") if isinstance(alert.get("behaviour"), dict) else {}
+        behaviour = (
+            alert.get("behaviour") if isinstance(alert.get("behaviour"), dict) else {}
+        )
         return bool(_str(behaviour.get("algo_model")))
     return _str(payload.get("trigger_type")) not in _SKIP_VIDEO_TRIGGERS
 
@@ -193,7 +201,12 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
         video_url = _refresh_campus_video_url(
             _str(payload.get("event_id")),
             _str(behaviour.get("video_url")),
-            has_clip=bool(clip["key"] or clip["url"] or clip["path"] or _str(behaviour.get("video_url"))),
+            has_clip=bool(
+                clip["key"]
+                or clip["url"]
+                or clip["path"]
+                or _str(behaviour.get("video_url"))
+            ),
         )
         if video_url:
             behaviour["video_url"] = video_url

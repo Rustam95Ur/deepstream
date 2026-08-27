@@ -15,7 +15,14 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import db_enabled, session_scope
-from app.ds.payload import clip_from_payload, normalize_payload, to_smartbox_ingest
+from app.ds.payload import (
+    CLIP_META_KEY,
+    clip_from_payload,
+    has_clip_source,
+    normalize_payload,
+    requires_video,
+    to_smartbox_ingest,
+)
 from app.ds.sinks.http_sink import post_json, post_multipart
 from app.history import record_send
 from app.minio_store import get_minio_store
@@ -28,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 OPEN_STATUSES = ("pending", "retrying")
 MAX_BACKOFF_S = 60.0
-VIDEO_POST_TIMEOUT_S = 60.0
+VIDEO_POST_TIMEOUT_S = 120.0
 
 
 def _utcnow() -> datetime:
@@ -271,16 +278,15 @@ def enqueue_payload(payload: dict[str, Any], *, reason: str = "trigger") -> int:
             status="skipped",
             error="video required",
         )
-        logger.warning("skip webhook enqueue event=%s reason=%s: video required", event_id, reason)
+        logger.warning(
+            "skip webhook enqueue event=%s reason=%s: video required", event_id, reason
+        )
         return 0
     outbound = to_smartbox_ingest(body)
     clip = clip_from_payload(body)
-    if clip.get("key"):
-        # Kept for multipart delivery; Campus ignores unknown top-level keys.
-        outbound["_nexus_clip"] = {
-            "key": clip["key"],
-            "bucket": clip.get("bucket") or "",
-        }
+    meta = {k: v for k, v in clip.items() if v}
+    if meta:
+        outbound[CLIP_META_KEY] = meta
     settings = get_store().get_settings()
     if not settings.enable_http_sink:
         record_send(
@@ -374,13 +380,27 @@ def _clip_bytes_for_event(
     event_id: str,
     payload: dict[str, Any] | None = None,
 ) -> tuple[bytes, str] | None:
-    """Load incident MP4 from MinIO for webhook multipart delivery."""
+    """Load incident MP4 from disk or MinIO for webhook multipart delivery."""
     raw = payload if isinstance(payload, dict) else {}
-    nested = raw.get("_nexus_clip") if isinstance(raw.get("_nexus_clip"), dict) else {}
+    nested = raw.get(CLIP_META_KEY) if isinstance(raw.get(CLIP_META_KEY), dict) else {}
+    path = (
+        str(nested.get("path") or "").strip()
+        or clip_from_payload(raw).get("path")
+        or ""
+    )
+    if path:
+        file_path = Path(path)
+        if file_path.is_file():
+            try:
+                data = file_path.read_bytes()
+            except OSError:
+                logger.exception("failed to read clip %s", file_path)
+            else:
+                if data:
+                    return data, _clip_filename(event_id)
     key = str(nested.get("key") or "").strip()
     if not key:
-        clip = clip_from_payload(raw)
-        key = clip.get("key") or ""
+        key = clip_from_payload(raw).get("key") or ""
     eid = (event_id or "").strip()
     if not key and eid and db_enabled():
         with session_scope(write=False) as session:
@@ -389,15 +409,30 @@ def _clip_bytes_for_event(
             )
             hist = dict(row.payload or {}) if row else {}
         key = clip_from_payload(hist).get("key") or ""
+        if not path:
+            path = clip_from_payload(hist).get("path") or ""
+            file_path = Path(path) if path else None
+            if file_path is not None and file_path.is_file():
+                try:
+                    data = file_path.read_bytes()
+                except OSError:
+                    logger.exception("failed to read clip %s", file_path)
+                else:
+                    if data:
+                        return data, _clip_filename(eid)
     if not key:
         return None
     data = get_minio_store().get_object_bytes(key)
     if not data:
         return None
+    return data, _clip_filename(eid)
+
+
+def _clip_filename(event_id: str) -> str:
     safe = "".join(
-        ch if ch.isalnum() or ch in "-_." else "_" for ch in (eid or "clip")
+        ch if ch.isalnum() or ch in "-_." else "_" for ch in (event_id or "clip")
     )[:80]
-    return data, f"{safe or 'clip'}.mp4"
+    return f"{safe or 'clip'}.mp4"
 
 
 def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
@@ -411,7 +446,7 @@ def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     url = (hook.url if hook else job.url) or job.url
     timeout = hook.timeout_sec if hook else 5.0
     outbound = to_smartbox_ingest(job.payload or {})
-    outbound.pop("_nexus_clip", None)
+    outbound.pop(CLIP_META_KEY, None)
     event_id = str(job.event_id or "")
     headers = {
         "User-Agent": "nexus-deepstream/0.1",
@@ -422,10 +457,11 @@ def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     clip = _clip_bytes_for_event(
         event_id, job.payload if isinstance(job.payload, dict) else None
     )
-    if clip is not None:
+    if requires_video(outbound) or requires_video(job.payload or {}):
+        if clip is None:
+            return False, None, "video required"
         video_bytes, filename = clip
-        # Uploading MP4 needs more time than a JSON ACK.
-        send_timeout = max(float(timeout), 120.0)
+        send_timeout = max(float(timeout), VIDEO_POST_TIMEOUT_S)
         return post_multipart(
             url,
             fields={"payload": json.dumps(outbound, ensure_ascii=False)},
@@ -519,7 +555,12 @@ def process_job(job_id: str) -> None:
     )
     if ok:
         logger.info("webhook ok event=%s attempt=%s url=%s", event_id, attempts, url)
-        _cleanup_local_clip(_clip_meta(payload))
+        path = str((payload.get(CLIP_META_KEY) or {}).get("path") or "").strip()
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                logger.warning("failed to remove local clip %s", path)
     elif final_status == "dead":
         logger.error(
             "webhook dead event=%s attempts=%s url=%s error=%s",
