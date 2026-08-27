@@ -219,7 +219,14 @@ Failed deliveries retry with backoff, then sit in the dead-letter queue until re
 
 On an incident trigger the node waits `post_s`, concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads the MP4 to MinIO, then enqueues POSTs. `stream_silent` skips the clip. The ring-buffer (`gst-launch` + `splitmuxsink`, ~3s segments) runs 24/7 for enabled RTSP cameras.
 
-Campus downloads `behaviour.video_url` as HTTP(S) for DeepStream cameras, or Digest from a SmartBox. Known types skip VLM; unknown codes are stored as-is for later labelling.
+When a clip exists, the webhook is sent as **`multipart/form-data`**:
+
+- field `payload` — SmartBox JSON (same envelope as above, including `behaviour.video_url`)
+- file `video` — the MP4 bytes from MinIO
+
+If there is no clip (`stream_silent` or clip failed), the node still POSTs pure `application/json`.
+
+Campus downloads `behaviour.video_url` as HTTP(S) for DeepStream cameras, or Digest from a SmartBox. When multipart `video` is present, Campus stores that file directly and skips the download. Known types skip VLM; unknown codes are stored as-is for later labelling.
 
 Do **not** put MinIO `127.0.0.1:9200` in `video_url`. Campus is another container, so that address is Campus itself (`Connection refused`).
 

@@ -125,13 +125,19 @@ def list_triggers(
     key = _after_key(cursor)
     if key is not None:
         stmt = stmt.where(tuple_(TriggerEventRow.created_at, TriggerEventRow.id) < key)
-    stmt = stmt.order_by(TriggerEventRow.created_at.desc(), TriggerEventRow.id.desc()).limit(limit + 1)
+    stmt = stmt.order_by(
+        TriggerEventRow.created_at.desc(), TriggerEventRow.id.desc()
+    ).limit(limit + 1)
     with session_scope(write=False) as session:
         rows = list(session.scalars(stmt).all())
         extra = len(rows) > limit
         if extra:
             rows = rows[:limit]
-        next_cursor = encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id) if extra and rows else None
+        next_cursor = (
+            encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id)
+            if extra and rows
+            else None
+        )
         items = [_trigger_out(r) for r in rows]
     return TriggerHistoryOut(items=items, next_cursor=next_cursor)
 
@@ -140,7 +146,9 @@ def list_triggers(
 def get_trigger(event_id: str) -> TriggerEventDetailOut:
     _require_db()
     with session_scope(write=False) as session:
-        row = session.scalar(select(TriggerEventRow).where(TriggerEventRow.event_id == event_id.strip()))
+        row = session.scalar(
+            select(TriggerEventRow).where(TriggerEventRow.event_id == event_id.strip())
+        )
         if row is None:
             raise HTTPException(status_code=404, detail="Event not found")
         base = _trigger_out(row)
@@ -152,21 +160,27 @@ def get_trigger(event_id: str) -> TriggerEventDetailOut:
 def get_trigger_clip(event_id: str) -> ClipUrlOut:
     _require_db()
     with session_scope(write=False) as session:
-        row = session.scalar(select(TriggerEventRow).where(TriggerEventRow.event_id == event_id.strip()))
+        row = session.scalar(
+            select(TriggerEventRow).where(TriggerEventRow.event_id == event_id.strip())
+        )
         if row is None:
             raise HTTPException(status_code=404, detail="Event not found")
         clip = clip_from_payload(dict(row.payload or {}))
     url = campus_clip_url(event_id) or clip["url"]
     if not url and clip["key"]:
         url = get_minio_store().object_url(clip["key"])
-    return ClipUrlOut(event_id=event_id, url=url, bucket=clip["bucket"], key=clip["key"])
+    return ClipUrlOut(
+        event_id=event_id, url=url, bucket=clip["bucket"], key=clip["key"]
+    )
 
 
 @router.post("/triggers/{event_id}/resend", response_model=ResendOut)
 def post_trigger_resend(event_id: str) -> ResendOut:
     _require_db()
     with session_scope(write=False) as session:
-        row = session.scalar(select(TriggerEventRow).where(TriggerEventRow.event_id == event_id.strip()))
+        row = session.scalar(
+            select(TriggerEventRow).where(TriggerEventRow.event_id == event_id.strip())
+        )
         if row is None:
             raise HTTPException(status_code=404, detail="Event not found")
     queued = resend_event(event_id.strip())
@@ -203,13 +217,19 @@ def list_sends(
     key = _after_key(cursor)
     if key is not None:
         stmt = stmt.where(tuple_(SendEventRow.created_at, SendEventRow.id) < key)
-    stmt = stmt.order_by(SendEventRow.created_at.desc(), SendEventRow.id.desc()).limit(limit + 1)
+    stmt = stmt.order_by(SendEventRow.created_at.desc(), SendEventRow.id.desc()).limit(
+        limit + 1
+    )
     with session_scope(write=False) as session:
         rows = list(session.scalars(stmt).all())
         extra = len(rows) > limit
         if extra:
             rows = rows[:limit]
-        next_cursor = encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id) if extra and rows else None
+        next_cursor = (
+            encode_cursor(t=rows[-1].created_at.isoformat(), id=rows[-1].id)
+            if extra and rows
+            else None
+        )
         items = [
             SendEventOut(
                 id=r.id,
@@ -244,14 +264,18 @@ def list_outbound(
     key = _after_key(cursor)
     if key is not None:
         stmt = stmt.where(tuple_(OutboundJobRow.updated_at, OutboundJobRow.id) < key)
-    stmt = stmt.order_by(OutboundJobRow.updated_at.desc(), OutboundJobRow.id.desc()).limit(limit + 1)
+    stmt = stmt.order_by(
+        OutboundJobRow.updated_at.desc(), OutboundJobRow.id.desc()
+    ).limit(limit + 1)
     with session_scope(write=False) as session:
         rows = list(session.scalars(stmt).all())
         extra = len(rows) > limit
         if extra:
             rows = rows[:limit]
         next_cursor = (
-            encode_cursor(t=rows[-1].updated_at.isoformat(), id=rows[-1].id) if extra and rows else None
+            encode_cursor(t=rows[-1].updated_at.isoformat(), id=rows[-1].id)
+            if extra and rows
+            else None
         )
         items = [_job_out(r) for r in rows]
     return OutboundJobListOut(items=items, next_cursor=next_cursor)

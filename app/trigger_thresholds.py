@@ -16,13 +16,19 @@ def flat_threshold_defaults(settings: Any) -> dict[str, dict[str, Any]]:
     """Build per-type maps from legacy flat NodeSettings fields."""
     return {
         "presence": {
-            "presence_min_people": int(getattr(settings, "presence_min_people", 1) or 1),
-            "presence_sustain_s": float(getattr(settings, "presence_sustain_s", 2.0) or 2.0),
+            "presence_min_people": int(
+                getattr(settings, "presence_min_people", 1) or 1
+            ),
+            "presence_sustain_s": float(
+                getattr(settings, "presence_sustain_s", 2.0) or 2.0
+            ),
             "cooldown_s": float(getattr(settings, "cooldown_s", 30.0) or 30.0),
         },
         "convergence": {
             "min_tracks": int(getattr(settings, "min_tracks", 2) or 2),
-            "converge_dist_bh": float(getattr(settings, "converge_dist_bh", 1.5) or 1.5),
+            "converge_dist_bh": float(
+                getattr(settings, "converge_dist_bh", 1.5) or 1.5
+            ),
             "speed_thresh_bh": float(getattr(settings, "speed_thresh_bh", 2.0) or 2.0),
             "sustain_s": float(getattr(settings, "sustain_s", 0.4) or 0.4),
             "cooldown_s": float(getattr(settings, "cooldown_s", 30.0) or 30.0),
@@ -33,7 +39,9 @@ def flat_threshold_defaults(settings: Any) -> dict[str, dict[str, Any]]:
             "cooldown_s": float(getattr(settings, "cooldown_s", 30.0) or 30.0),
         },
         "stream_silent": {
-            "stream_silent_s": float(getattr(settings, "stream_silent_s", 30.0) or 30.0),
+            "stream_silent_s": float(
+                getattr(settings, "stream_silent_s", 30.0) or 30.0
+            ),
             "cooldown_s": float(getattr(settings, "cooldown_s", 30.0) or 30.0),
         },
     }
@@ -45,7 +53,9 @@ def merge_trigger_thresholds(
 ) -> dict[str, dict[str, Any]]:
     """Defaults from flat fields, overridden by trigger_thresholds."""
     base = flat_threshold_defaults(settings)
-    overrides = raw if isinstance(raw, dict) else getattr(settings, "trigger_thresholds", None)
+    overrides = (
+        raw if isinstance(raw, dict) else getattr(settings, "trigger_thresholds", None)
+    )
     if not isinstance(overrides, dict):
         return base
     out: dict[str, dict[str, Any]] = {}

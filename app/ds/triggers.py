@@ -135,7 +135,9 @@ class TriggerEngine:
                 self.app_cfg.pipeline.stream_silent_s,
             )
         )
-        cooldown = float(self._t("stream_silent", "cooldown_s", self.trigger.cooldown_s))
+        cooldown = float(
+            self._t("stream_silent", "cooldown_s", self.trigger.cooldown_s)
+        )
         for st in self.by_pad.values():
             if not self._allows(st.camera_id, "stream_silent"):
                 continue
@@ -256,7 +258,9 @@ class TriggerEngine:
         *,
         raw_n: int,
     ) -> None:
-        need = int(self._t("presence", "presence_min_people", self.trigger.presence_min_people))
+        need = int(
+            self._t("presence", "presence_min_people", self.trigger.presence_min_people)
+        )
         sustain = float(
             self._t("presence", "presence_sustain_s", self.trigger.presence_sustain_s)
         )
@@ -304,7 +308,9 @@ class TriggerEngine:
         sustain = float(self._t("convergence", "sustain_s", self.trigger.sustain_s))
         cooldown = float(self._t("convergence", "cooldown_s", self.trigger.cooldown_s))
         if len(people) < min_tracks:
-            if not self._still_held(st.converge_last_hit, now, self._miss_hold_s(sustain)):
+            if not self._still_held(
+                st.converge_last_hit, now, self._miss_hold_s(sustain)
+            ):
                 st.converge_since = None
             return
 
@@ -344,13 +350,17 @@ class TriggerEngine:
                         },
                     )
                 st.converge_since = now
-        elif not self._still_held(st.converge_last_hit, now, self._miss_hold_s(sustain)):
+        elif not self._still_held(
+            st.converge_last_hit, now, self._miss_hold_s(sustain)
+        ):
             st.converge_since = None
 
     def _eval_vif(
         self, st: CameraTriggerState, people: list[Detection], now: float
     ) -> None:
-        iou_thresh = float(self._t("vif", "vif_iou_thresh", self.trigger.vif_iou_thresh))
+        iou_thresh = float(
+            self._t("vif", "vif_iou_thresh", self.trigger.vif_iou_thresh)
+        )
         sustain = float(self._t("vif", "vif_sustain_s", self.trigger.vif_sustain_s))
         cooldown = float(self._t("vif", "cooldown_s", self.trigger.cooldown_s))
         if len(people) < 2:

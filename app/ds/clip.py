@@ -245,7 +245,11 @@ def _build_clip_locked(
         src = Path(source_video)
         raw_off = payload.get("source_offset_s")
         try:
-            offset = float(raw_off) if raw_off is not None and str(raw_off).strip() != "" else pre_s
+            offset = (
+                float(raw_off)
+                if raw_off is not None and str(raw_off).strip() != ""
+                else pre_s
+            )
         except (TypeError, ValueError):
             offset = pre_s
         if offset > 24 * 3600:

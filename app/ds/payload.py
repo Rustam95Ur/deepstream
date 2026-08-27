@@ -76,9 +76,11 @@ def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "pre_s": _float(payload.get("pre_s")),
         "post_s": _float(payload.get("post_s")),
         "evidence": evidence if isinstance(evidence, dict) else {},
-        "model_versions": models
-        if isinstance(models, dict)
-        else {"detector": "yolo11n", "first_line": "nexus_deepstream"},
+        "model_versions": (
+            models
+            if isinstance(models, dict)
+            else {"detector": "yolo11n", "first_line": "nexus_deepstream"}
+        ),
         "clip": clip,
         "video_url": clip["url"],
         "video_bucket": clip["bucket"],
@@ -93,9 +95,7 @@ def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("source_offset_s") is not None:
         out["source_offset_s"] = _float(payload.get("source_offset_s"))
     camera_uri = _str(
-        payload.get("camera_uri")
-        or payload.get("main_uri")
-        or payload.get("rtsp_url")
+        payload.get("camera_uri") or payload.get("main_uri") or payload.get("rtsp_url")
     )
     if camera_uri:
         out["camera_uri"] = camera_uri
@@ -177,9 +177,7 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
     trigger = _str(body.get("trigger_type"))
     ts = _capture_unix(_str(body.get("trigger_time")))
     channel_name = _str(body.get("camera_name")) or _str(body.get("camera_id"))
-    ipc = _str(body.get("ipc_addr")) or ipc_addr_from_uri(
-        _str(body.get("camera_uri"))
-    )
+    ipc = _str(body.get("ipc_addr")) or ipc_addr_from_uri(_str(body.get("camera_uri")))
     device_name = _str(body.get("node_id")) or "nexus-deepstream"
     event_id = _str(body.get("event_id"))
     clip = clip_from_payload(body)

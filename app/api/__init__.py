@@ -26,7 +26,9 @@ def _parse_basic(auth: str) -> tuple[str, str] | None:
     if not auth.lower().startswith("basic "):
         return None
     try:
-        raw = base64.b64decode(auth.split(" ", 1)[1].strip(), validate=True).decode("utf-8")
+        raw = base64.b64decode(auth.split(" ", 1)[1].strip(), validate=True).decode(
+            "utf-8"
+        )
     except (ValueError, UnicodeDecodeError):
         return None
     login, sep, password = raw.partition(":")

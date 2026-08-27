@@ -14,9 +14,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import db_enabled, session_scope
-from app.ds.payload import normalize_payload, to_smartbox_ingest
-from app.ds.sinks.http_sink import post_json
+from app.ds.payload import clip_from_payload, normalize_payload, to_smartbox_ingest
+from app.ds.sinks.http_sink import post_json, post_multipart
 from app.history import record_send
+from app.minio_store import get_minio_store
 from app.models import OutboundJobRow, TriggerEventRow, WebhookRow
 from app.settings import NodeSettings
 from app.storage import get_store
@@ -57,7 +58,9 @@ def _from_row(row: WebhookRow) -> Webhook:
         url=(row.url or "").strip(),
         enabled=bool(row.enabled),
         login=(row.login or "").strip(),
-        auth_configured=bool((row.login or "").strip() and (row.password_hash or "").strip()),
+        auth_configured=bool(
+            (row.login or "").strip() and (row.password_hash or "").strip()
+        ),
         timeout_sec=float(row.timeout_sec or 5.0),
         max_retries=int(row.max_retries or 0),
         created_at=row.created_at,
@@ -69,7 +72,9 @@ def list_webhooks() -> list[Webhook]:
     if not db_enabled():
         return []
     with session_scope(write=False) as session:
-        rows = session.scalars(select(WebhookRow).order_by(WebhookRow.created_at, WebhookRow.id)).all()
+        rows = session.scalars(
+            select(WebhookRow).order_by(WebhookRow.created_at, WebhookRow.id)
+        ).all()
         return [_from_row(r) for r in rows]
 
 
@@ -211,6 +216,13 @@ def enqueue_payload(payload: dict[str, Any], *, reason: str = "trigger") -> int:
     body = normalize_payload(payload)
     event_id = str(body.get("event_id") or "")
     outbound = to_smartbox_ingest(body)
+    clip = clip_from_payload(body)
+    if clip.get("key"):
+        # Kept for multipart delivery; Campus ignores unknown top-level keys.
+        outbound["_nexus_clip"] = {
+            "key": clip["key"],
+            "bucket": clip.get("bucket") or "",
+        }
     settings = get_store().get_settings()
     if not settings.enable_http_sink:
         record_send(
@@ -271,7 +283,9 @@ def resend_event(event_id: str) -> int:
     if not eid or not db_enabled():
         return 0
     with session_scope(write=False) as session:
-        row = session.scalar(select(TriggerEventRow).where(TriggerEventRow.event_id == eid))
+        row = session.scalar(
+            select(TriggerEventRow).where(TriggerEventRow.event_id == eid)
+        )
         payload = dict(row.payload or {}) if row else {}
     if not payload:
         return 0
@@ -298,6 +312,36 @@ def retry_job(job_id: str) -> OutboundJobRow | None:
         return row
 
 
+def _clip_bytes_for_event(
+    event_id: str,
+    payload: dict[str, Any] | None = None,
+) -> tuple[bytes, str] | None:
+    """Load incident MP4 from MinIO for webhook multipart delivery."""
+    raw = payload if isinstance(payload, dict) else {}
+    nested = raw.get("_nexus_clip") if isinstance(raw.get("_nexus_clip"), dict) else {}
+    key = str(nested.get("key") or "").strip()
+    if not key:
+        clip = clip_from_payload(raw)
+        key = clip.get("key") or ""
+    eid = (event_id or "").strip()
+    if not key and eid and db_enabled():
+        with session_scope(write=False) as session:
+            row = session.scalar(
+                select(TriggerEventRow).where(TriggerEventRow.event_id == eid)
+            )
+            hist = dict(row.payload or {}) if row else {}
+        key = clip_from_payload(hist).get("key") or ""
+    if not key:
+        return None
+    data = get_minio_store().get_object_bytes(key)
+    if not data:
+        return None
+    safe = "".join(
+        ch if ch.isalnum() or ch in "-_." else "_" for ch in (eid or "clip")
+    )[:80]
+    return data, f"{safe or 'clip'}.mp4"
+
+
 def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     hook: Webhook | None = None
     with session_scope(write=False) as session:
@@ -309,14 +353,30 @@ def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     url = (hook.url if hook else job.url) or job.url
     timeout = hook.timeout_sec if hook else 5.0
     outbound = to_smartbox_ingest(job.payload or {})
-    body = json.dumps(outbound, ensure_ascii=False).encode("utf-8")
+    outbound.pop("_nexus_clip", None)
     event_id = str(job.event_id or "")
     headers = {
-        "Content-Type": "application/json",
         "User-Agent": "nexus-deepstream/0.1",
     }
     if event_id:
         headers["X-Nexus-Event-Id"] = event_id
+
+    clip = _clip_bytes_for_event(
+        event_id, job.payload if isinstance(job.payload, dict) else None
+    )
+    if clip is not None:
+        video_bytes, filename = clip
+        # Uploading MP4 needs more time than a JSON ACK.
+        send_timeout = max(float(timeout), 120.0)
+        return post_multipart(
+            url,
+            fields={"payload": json.dumps(outbound, ensure_ascii=False)},
+            files={"video": (filename, video_bytes, "video/mp4")},
+            headers=headers,
+            timeout_sec=send_timeout,
+        )
+
+    body = json.dumps(outbound, ensure_ascii=False).encode("utf-8")
     return post_json(url, body, headers=headers, timeout_sec=timeout)
 
 
@@ -428,7 +488,9 @@ class OutboundWorker:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, name="outbound-webhooks", daemon=True)
+        self._thread = threading.Thread(
+            target=self._loop, name="outbound-webhooks", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:

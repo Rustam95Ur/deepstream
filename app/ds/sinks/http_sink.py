@@ -18,6 +18,24 @@ def post_json(
     headers: dict[str, str] | None = None,
     timeout_sec: float = 5.0,
 ) -> tuple[bool, int | None, str]:
+    return post_bytes(
+        url,
+        body,
+        headers={
+            "Content-Type": "application/json",
+            **(headers or {}),
+        },
+        timeout_sec=timeout_sec,
+    )
+
+
+def post_bytes(
+    url: str,
+    body: bytes,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout_sec: float = 5.0,
+) -> tuple[bool, int | None, str]:
     target = (url or "").strip()
     if not target:
         return False, None, "url empty"
@@ -63,6 +81,56 @@ def post_json(
                 conn.close()
             except Exception:
                 pass
+
+
+def build_multipart(
+    fields: dict[str, str],
+    *,
+    files: dict[str, tuple[str, bytes, str]] | None = None,
+) -> tuple[bytes, str]:
+    """Return ``(body, content_type)`` for ``multipart/form-data``."""
+    import uuid
+
+    boundary = f"----nexus{uuid.uuid4().hex}"
+    chunks: list[bytes] = []
+    for name, value in fields.items():
+        chunks.append(f"--{boundary}\r\n".encode())
+        chunks.append(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+        chunks.append(str(value).encode("utf-8"))
+        chunks.append(b"\r\n")
+    for name, (filename, data, content_type) in (files or {}).items():
+        chunks.append(f"--{boundary}\r\n".encode())
+        chunks.append(
+            (
+                f'Content-Disposition: form-data; name="{name}"; '
+                f'filename="{filename}"\r\n'
+                f"Content-Type: {content_type}\r\n\r\n"
+            ).encode()
+        )
+        chunks.append(data)
+        chunks.append(b"\r\n")
+    chunks.append(f"--{boundary}--\r\n".encode())
+    return b"".join(chunks), f"multipart/form-data; boundary={boundary}"
+
+
+def post_multipart(
+    url: str,
+    *,
+    fields: dict[str, str],
+    files: dict[str, tuple[str, bytes, str]] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout_sec: float = 5.0,
+) -> tuple[bool, int | None, str]:
+    body, content_type = build_multipart(fields, files=files)
+    return post_bytes(
+        url,
+        body,
+        headers={
+            "Content-Type": content_type,
+            **(headers or {}),
+        },
+        timeout_sec=timeout_sec,
+    )
 
 
 class HttpSink:

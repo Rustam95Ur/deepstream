@@ -68,7 +68,12 @@ def post_webhook(body: WebhookIn) -> WebhookOut:
 def put_webhook(webhook_id: str, body: WebhookIn) -> WebhookOut:
     _require_db()
     existing = get_webhook(webhook_id)
-    if existing and (body.login or existing.login) and not existing.auth_configured and not body.password:
+    if (
+        existing
+        and (body.login or existing.login)
+        and not existing.auth_configured
+        and not body.password
+    ):
         raise HTTPException(status_code=400, detail="Укажите пароль для входящего API")
     hook = update_webhook(
         webhook_id,

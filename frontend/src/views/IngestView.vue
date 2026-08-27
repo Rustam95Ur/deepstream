@@ -212,7 +212,8 @@ Content-Type: application/json
         <p class="lede">
           Исходящие сработки в формате SmartBox на
           <code>POST /api/v1/school/incident-ingest/</code>.
-          Логин и пароль — для входящего API камер.
+          Если есть клип — уходит <code>multipart/form-data</code>
+          (поле <code>payload</code> + файл <code>video</code>), иначе чистый JSON.
         </p>
       </div>
       <div class="card-body">

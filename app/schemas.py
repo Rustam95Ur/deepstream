@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from app.trigger_types import camera_trigger_override
 
@@ -80,8 +87,12 @@ class CameraIn(BaseModel):
             raw.get("channel_id"),
             raw.get("external_id"),
         )
-        uri = _first_str(raw.get("main_uri"), raw.get("uri"), raw.get("rtsp_url"), raw.get("url"))
-        name = _first_str(raw.get("name"), raw.get("title"), raw.get("channel_name"), cam_id)
+        uri = _first_str(
+            raw.get("main_uri"), raw.get("uri"), raw.get("rtsp_url"), raw.get("url")
+        )
+        name = _first_str(
+            raw.get("name"), raw.get("title"), raw.get("channel_name"), cam_id
+        )
         extra_meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else {}
         leftover = {k: v for k, v in raw.items() if k not in _CAMERA_KNOWN}
         if "enabled" not in raw and "is_active" in raw:
@@ -189,7 +200,9 @@ class CameraTestBatchIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     count: int = Field(..., ge=1, le=128, description="How many test cameras to create")
-    main_uri: str = Field(..., min_length=1, description="rtsp:// or file:// used by every camera")
+    main_uri: str = Field(
+        ..., min_length=1, description="rtsp:// or file:// used by every camera"
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -197,7 +210,9 @@ class CameraTestBatchIn(BaseModel):
         if not isinstance(data, dict):
             return data
         raw = dict(data)
-        uri = _first_str(raw.get("main_uri"), raw.get("uri"), raw.get("rtsp_url"), raw.get("url"))
+        uri = _first_str(
+            raw.get("main_uri"), raw.get("uri"), raw.get("rtsp_url"), raw.get("url")
+        )
         if uri:
             raw["main_uri"] = uri
         return raw

@@ -21,5 +21,7 @@ class OutboundEnqueueSink:
         try:
             enqueue_payload(body)
         except Exception:
-            logger.exception("failed to enqueue webhooks event=%s", body.get("event_id"))
+            logger.exception(
+                "failed to enqueue webhooks event=%s", body.get("event_id")
+            )
         return str(body.get("event_id") or "") or None

@@ -64,7 +64,9 @@ def get_users(
         after_id=after_id,
         limit=page_size,
     )
-    return UserListOut(users=[_out(u) for u in users], next_cursor=next_cursor, total=user_count())
+    return UserListOut(
+        users=[_out(u) for u in users], next_cursor=next_cursor, total=user_count()
+    )
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -87,7 +89,9 @@ def get_one_user(user_id: str) -> UserOut:
 @router.put("/{user_id}", response_model=UserOut)
 def put_user(user_id: str, body: UserUpdateIn) -> UserOut:
     try:
-        user = update_user(user_id, email=body.email, name=body.name, password=body.password)
+        user = update_user(
+            user_id, email=body.email, name=body.name, password=body.password
+        )
     except EmailTakenError:
         raise HTTPException(status_code=409, detail="Email уже занят") from None
     if not user:
@@ -101,6 +105,8 @@ def remove_user(user_id: str, request: Request) -> None:
     if current and current.id == user_id:
         raise HTTPException(status_code=400, detail="Нельзя удалить текущий аккаунт")
     if user_count() <= 1:
-        raise HTTPException(status_code=400, detail="Нельзя удалить последнего пользователя")
+        raise HTTPException(
+            status_code=400, detail="Нельзя удалить последнего пользователя"
+        )
     if not delete_user(user_id):
         raise HTTPException(status_code=404, detail="Пользователь не найден")

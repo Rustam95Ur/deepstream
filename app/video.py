@@ -79,7 +79,9 @@ def _watch_config() -> None:
             logger.exception("video: config watch failed")
             continue
         if last is not None and fp != last:
-            logger.info("video: cameras/settings changed — reload pipeline + ring-buffer")
+            logger.info(
+                "video: cameras/settings changed — reload pipeline + ring-buffer"
+            )
             get_manager().request_reload()
             get_ring_buffer().request_refresh()
         last = fp

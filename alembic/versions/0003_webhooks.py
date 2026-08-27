@@ -20,7 +20,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "cameras",
-        sa.Column("enabled_triggers", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column(
+            "enabled_triggers", postgresql.JSONB(astext_type=sa.Text()), nullable=True
+        ),
     )
     op.create_table(
         "webhooks",
@@ -49,7 +51,9 @@ def upgrade() -> None:
         ),
         sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("max_attempts", sa.Integer(), nullable=False, server_default="6"),
-        sa.Column("status", sa.String(length=16), nullable=False, server_default="pending"),
+        sa.Column(
+            "status", sa.String(length=16), nullable=False, server_default="pending"
+        ),
         sa.Column("last_error", sa.Text(), nullable=False, server_default=""),
         sa.Column("http_status", sa.Integer(), nullable=True),
         sa.Column("next_attempt_at", sa.DateTime(timezone=True), nullable=False),
@@ -57,7 +61,9 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index("ix_outbound_jobs_event_id", "outbound_jobs", ["event_id"])
-    op.create_index("ix_outbound_jobs_status_next", "outbound_jobs", ["status", "next_attempt_at"])
+    op.create_index(
+        "ix_outbound_jobs_status_next", "outbound_jobs", ["status", "next_attempt_at"]
+    )
     op.create_index("ix_outbound_jobs_webhook_id", "outbound_jobs", ["webhook_id"])
 
 

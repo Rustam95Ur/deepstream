@@ -121,7 +121,9 @@ def advertised_public_base() -> str:
     Linux container and those names point at Campus itself or do not resolve.
     """
     global _advertised_base_warned
-    port = _env("NEXUS_DS_ADVERTISE_PORT") or _env("NEXUS_DS_PORT") or DEFAULT_PUBLIC_PORT
+    port = (
+        _env("NEXUS_DS_ADVERTISE_PORT") or _env("NEXUS_DS_PORT") or DEFAULT_PUBLIC_PORT
+    )
     raw = _env("NEXUS_DS_PUBLIC_URL").rstrip("/")
     parsed = urlparse(raw) if raw else urlparse("")
     host = (parsed.hostname or "").strip()
@@ -141,7 +143,9 @@ def advertised_public_base() -> str:
                 advertised,
             )
         else:
-            logger.info("Campus clip base %s (no .env NEXUS_DS_PUBLIC_URL needed)", advertised)
+            logger.info(
+                "Campus clip base %s (no .env NEXUS_DS_PUBLIC_URL needed)", advertised
+            )
     return advertised
 
 
@@ -249,7 +253,9 @@ class MinioStore:
         logger.info("MinIO uploaded bucket=%s key=%s", self.config.bucket, key)
         return True
 
-    def iter_object(self, key: str, chunk_size: int = 64 * 1024) -> tuple[Iterator[bytes], int] | None:
+    def iter_object(
+        self, key: str, chunk_size: int = 64 * 1024
+    ) -> tuple[Iterator[bytes], int] | None:
         client = self._client_or_none()
         if client is None:
             return None
@@ -274,6 +280,38 @@ class MinioStore:
                 body.close()
 
         return chunks(), length
+
+    def get_object_bytes(
+        self, key: str, *, max_bytes: int = 200 * 1024 * 1024
+    ) -> bytes | None:
+        """Load a whole object into memory (capped). Used for webhook multipart."""
+        streamed = self.iter_object(key)
+        if streamed is None:
+            return None
+        chunks, length = streamed
+        if length and length > max_bytes:
+            logger.warning(
+                "MinIO object too large for webhook key=%s size=%s max=%s",
+                key,
+                length,
+                max_bytes,
+            )
+            # Drain and discard.
+            for _ in chunks:
+                pass
+            return None
+        parts: list[bytes] = []
+        total = 0
+        for chunk in chunks:
+            total += len(chunk)
+            if total > max_bytes:
+                logger.warning(
+                    "MinIO object exceeded webhook size cap key=%s",
+                    key,
+                )
+                return None
+            parts.append(chunk)
+        return b"".join(parts)
 
     def _presign_client(self) -> Any | None:
         """Sign against the advertised host so SigV4 ``Host`` matches the URL."""

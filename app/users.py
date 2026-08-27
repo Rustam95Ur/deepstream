@@ -100,7 +100,9 @@ def list_users(
         extra = limit is not None and len(rows) > limit
         if extra:
             rows = rows[:limit]
-        next_cursor = encode_cursor(k=rows[-1].email, id=rows[-1].id) if extra and rows else None
+        next_cursor = (
+            encode_cursor(k=rows[-1].email, id=rows[-1].id) if extra and rows else None
+        )
         return [_record(r) for r in rows], next_cursor
 
 
@@ -133,7 +135,9 @@ def delete_user(user_id: str) -> bool:
         return True
 
 
-def update_user(user_id: str, *, email: str, name: str, password: str = "") -> UserRecord | None:
+def update_user(
+    user_id: str, *, email: str, name: str, password: str = ""
+) -> UserRecord | None:
     email = normalize_email(email)
     now = _utcnow()
     try:

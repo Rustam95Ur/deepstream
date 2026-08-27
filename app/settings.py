@@ -74,7 +74,9 @@ class NodeSettings(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_threshold_profiles(self) -> NodeSettings:
-        self.trigger_thresholds = merge_trigger_thresholds(self, self.trigger_thresholds)
+        self.trigger_thresholds = merge_trigger_thresholds(
+            self, self.trigger_thresholds
+        )
         sync_flat_from_profiles(self)
         return self
 
@@ -98,8 +100,7 @@ class EnvBootstrap(BaseModel):
     )
     debug_dir: Path = Field(
         default_factory=lambda: Path(
-            os.environ.get("DEEPSTREAM_DEBUG_DIR")
-            or str(_default_data_dir() / "debug")
+            os.environ.get("DEEPSTREAM_DEBUG_DIR") or str(_default_data_dir() / "debug")
         )
     )
 

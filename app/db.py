@@ -36,9 +36,7 @@ def database_url() -> str:
 
 
 def migrate_database_url() -> str:
-    return (
-        os.environ.get("NEXUS_DS_DATABASE_MIGRATE_URL") or database_url()
-    ).strip()
+    return (os.environ.get("NEXUS_DS_DATABASE_MIGRATE_URL") or database_url()).strip()
 
 
 def db_enabled() -> bool:
@@ -63,7 +61,9 @@ def _attach_session_gucs(engine: Engine, *, statement_timeout_ms: int) -> None:
             cur.execute("SET timezone = 'UTC'")
 
 
-def _make_engine(url: str, *, pool_size: int, max_overflow: int, statement_timeout_ms: int) -> Engine:
+def _make_engine(
+    url: str, *, pool_size: int, max_overflow: int, statement_timeout_ms: int
+) -> Engine:
     engine = create_engine(
         url,
         pool_pre_ping=True,

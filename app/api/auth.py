@@ -6,7 +6,13 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app.schemas import LoginIn, SessionOut
 from app.storage import get_store
-from app.users import EmailTakenError, UserRecord, create_user, get_user_by_email, has_users
+from app.users import (
+    EmailTakenError,
+    UserRecord,
+    create_user,
+    get_user_by_email,
+    has_users,
+)
 from app.web.passwords import verify_password
 from app.web.session import (
     clear_session_cookie,
@@ -18,7 +24,9 @@ from app.web.session import (
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
-def _session_out(*, user: UserRecord | None = None, authenticated: bool | None = None) -> SessionOut:
+def _session_out(
+    *, user: UserRecord | None = None, authenticated: bool | None = None
+) -> SessionOut:
     settings = get_store().get_settings()
     authed = bool(user) if authenticated is None else authenticated
     return SessionOut(

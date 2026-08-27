@@ -29,7 +29,9 @@ _TEST_META = {
     "usage_modules": [2],
 }
 
-router = APIRouter(prefix="/api/v1/cameras", tags=["cameras"], dependencies=[CameraApiAuth])
+router = APIRouter(
+    prefix="/api/v1/cameras", tags=["cameras"], dependencies=[CameraApiAuth]
+)
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -41,7 +43,9 @@ def _aware(dt: datetime | None) -> datetime | None:
 
 
 def _with_id(store: Store, body: CameraIn, *, camera_id: str = "") -> CameraIn:
-    cam_id = (camera_id or body.id or body.external_id or "").strip() or store.new_camera_id()
+    cam_id = (
+        camera_id or body.id or body.external_id or ""
+    ).strip() or store.new_camera_id()
     return body.model_copy(update={"id": cam_id, "name": body.name or cam_id})
 
 
@@ -64,7 +68,9 @@ def _alloc_test_ids(existing_ids: set[str], count: int) -> list[str]:
             ids.append(cam_id)
         n += 1
         if n > 10_000:
-            raise HTTPException(status_code=400, detail="cannot allocate test camera ids")
+            raise HTTPException(
+                status_code=400, detail="cannot allocate test camera ids"
+            )
     return ids
 
 
@@ -86,7 +92,9 @@ def list_cameras(
         after_name = str(payload.get("k") or "") if "k" in payload else None
     paginated = limit is not None or after_id is not None
     page_size = (limit or 10) if paginated else None
-    filtered = bool(q.strip()) or enabled is not None or since is not None or until is not None
+    filtered = (
+        bool(q.strip()) or enabled is not None or since is not None or until is not None
+    )
     next_cursor = None
     if paginated or filtered:
         cams, next_cursor = store.search_cameras(
@@ -111,7 +119,11 @@ def list_cameras(
     )
 
 
-@router.post("/test-batch", response_model=CameraTestBatchOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/test-batch",
+    response_model=CameraTestBatchOut,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_test_cameras(body: CameraTestBatchIn) -> CameraTestBatchOut:
     uri = body.main_uri.strip()
     low = uri.lower()

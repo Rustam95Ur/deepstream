@@ -50,7 +50,9 @@ class HistoryWriter:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, name="history-writer", daemon=True)
+        self._thread = threading.Thread(
+            target=self._loop, name="history-writer", daemon=True
+        )
         self._thread.start()
 
     def stop(self) -> None:

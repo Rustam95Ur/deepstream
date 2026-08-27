@@ -376,9 +376,7 @@ class IncidentRingBufferWorker:
         )
 
 
-def gc_old_segments(
-    workers: list[IncidentRingBufferWorker], keep_s: int
-) -> None:
+def gc_old_segments(workers: list[IncidentRingBufferWorker], keep_s: int) -> None:
     cutoff = time.time() - keep_s
     for w in workers:
         try:

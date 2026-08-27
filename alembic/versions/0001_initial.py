@@ -24,7 +24,9 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=False, server_default=""),
         sa.Column("main_uri", sa.Text(), nullable=False, server_default=""),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column("external_id", sa.String(length=128), nullable=False, server_default=""),
+        sa.Column(
+            "external_id", sa.String(length=128), nullable=False, server_default=""
+        ),
         sa.Column(
             "meta",
             postgresql.JSONB(astext_type=sa.Text()),
@@ -45,9 +47,15 @@ def upgrade() -> None:
         "trigger_events",
         sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
         sa.Column("event_id", sa.String(length=64), nullable=False),
-        sa.Column("camera_id", sa.String(length=128), nullable=False, server_default=""),
-        sa.Column("trigger_type", sa.String(length=64), nullable=False, server_default=""),
-        sa.Column("category", sa.String(length=64), nullable=False, server_default="incident"),
+        sa.Column(
+            "camera_id", sa.String(length=128), nullable=False, server_default=""
+        ),
+        sa.Column(
+            "trigger_type", sa.String(length=64), nullable=False, server_default=""
+        ),
+        sa.Column(
+            "category", sa.String(length=64), nullable=False, server_default="incident"
+        ),
         sa.Column(
             "evidence",
             postgresql.JSONB(astext_type=sa.Text()),

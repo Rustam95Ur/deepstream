@@ -85,7 +85,9 @@ def probe_codec(rtsp_url: str, *, timeout_sec: float = 6.0) -> CodecName | None:
     return None
 
 
-def resolve_codec(rtsp_url: str, camera_name: str, default: CodecName = "h265") -> CodecName:
+def resolve_codec(
+    rtsp_url: str, camera_name: str, default: CodecName = "h265"
+) -> CodecName:
     probed = probe_codec(rtsp_url)
     if probed:
         logger.info("RTSP writer [%s]: codec from ffprobe=%s", camera_name, probed)

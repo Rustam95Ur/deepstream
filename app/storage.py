@@ -201,7 +201,9 @@ class Store:
                 rows = rows[:limit]
             out = [_camera_out(r) for r in rows]
             next_cursor = (
-                encode_cursor(k=rows[-1].name, id=rows[-1].id) if extra and rows else None
+                encode_cursor(k=rows[-1].name, id=rows[-1].id)
+                if extra and rows
+                else None
             )
         return out, next_cursor
 
@@ -231,7 +233,9 @@ class Store:
         current = self.get_camera(camera_id)
         if current is None:
             return None
-        data = current.model_dump(exclude={"uri", "rtsp_url", "created_at", "updated_at"})
+        data = current.model_dump(
+            exclude={"uri", "rtsp_url", "created_at", "updated_at"}
+        )
         data.update(patch)
         cam, _ = self.upsert_camera(CameraIn.model_validate(data))
         return cam
@@ -243,7 +247,9 @@ class Store:
             cam_id = (cam.id or "").strip()
             if not cam_id:
                 continue
-            unique[cam_id] = cam.model_copy(update={"id": cam_id, "name": cam.name or cam_id})
+            unique[cam_id] = cam.model_copy(
+                update={"id": cam_id, "name": cam.name or cam_id}
+            )
         incoming = unique
         created_n = 0
         updated_n = 0
@@ -264,7 +270,9 @@ class Store:
                 row.external_id = cam.external_id
                 incoming_meta = dict(cam.meta or {})
                 prev_meta = dict(row.extra or {})
-                row.extra = {**prev_meta, **incoming_meta} if incoming_meta else prev_meta
+                row.extra = (
+                    {**prev_meta, **incoming_meta} if incoming_meta else prev_meta
+                )
                 row.enabled_triggers = cam.enabled_triggers
                 row.updated_at = now
                 session.flush()

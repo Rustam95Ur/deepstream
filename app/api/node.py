@@ -10,7 +10,13 @@ from app.pipeline_status import attach_status
 from app.schemas import HealthOut, VideoHealthOut, WorkerStatusOut
 from app.settings import NodeSettings
 from app.storage import get_store
-from app.video_client import notify_reload, video_health, worker_start, worker_status, worker_stop
+from app.video_client import (
+    notify_reload,
+    video_health,
+    worker_start,
+    worker_status,
+    worker_stop,
+)
 from app.webhooks import list_enabled_webhooks
 
 router = APIRouter(prefix="/api/v1", tags=["node"])

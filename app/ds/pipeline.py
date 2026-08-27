@@ -394,7 +394,9 @@ def run_pipeline(
                 try:
                     fn()
                 except Exception:
-                    logger.exception("%s.%s failed (%s)", type(obj).__name__, name, reason)
+                    logger.exception(
+                        "%s.%s failed (%s)", type(obj).__name__, name, reason
+                    )
         native = None
         for attr in ("_pipeline", "pipeline", "gst_pipeline"):
             candidate = getattr(pipeline, attr, None)
@@ -443,7 +445,9 @@ def run_pipeline(
                 continue
             attempts += 1
             if attempts == 1 or attempts % 15 == 0:
-                logger.info("reload requested — stopping live pipeline (attempt %s)", attempts)
+                logger.info(
+                    "reload requested — stopping live pipeline (attempt %s)", attempts
+                )
             _stop_pipeline("reload")
 
     if interrupt is not None:
