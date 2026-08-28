@@ -455,6 +455,9 @@ def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
 
 def _non_retryable(error: str) -> bool:
     return (error or "").strip().lower() == "webhook disabled"
+
+
+def _claim_jobs(limit: int = 8) -> list[str]:
     now = _utcnow()
     ids: list[str] = []
     with session_scope(write=True) as session:
