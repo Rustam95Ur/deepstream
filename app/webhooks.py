@@ -453,7 +453,8 @@ def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     return post_json(url, body, headers=headers, timeout_sec=timeout)
 
 
-def _claim_jobs(limit: int = 8) -> list[str]:
+def _non_retryable(error: str) -> bool:
+    return (error or "").strip().lower() == "webhook disabled"
     now = _utcnow()
     ids: list[str] = []
     with session_scope(write=True) as session:
@@ -512,7 +513,7 @@ def process_job(job_id: str) -> None:
             row.next_attempt_at = now
         else:
             row.last_error = (error or "delivery failed")[:2000]
-            if row.attempts >= max(1, int(row.max_attempts or 1)):
+            if _non_retryable(error) or row.attempts >= max(1, int(row.max_attempts or 1)):
                 row.status = "dead"
                 row.next_attempt_at = now
             else:
@@ -544,7 +545,8 @@ def process_job(job_id: str) -> None:
             except OSError:
                 logger.warning("failed to remove local clip %s", path)
     elif final_status == "dead":
-        logger.error(
+        log = logger.info if _non_retryable(last_error) else logger.error
+        log(
             "webhook dead event=%s attempts=%s url=%s error=%s",
             event_id,
             attempts,

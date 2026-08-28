@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit
+
+logger = logging.getLogger(__name__)
 
 
 def _str(value: Any) -> str:
@@ -200,14 +203,74 @@ def _refresh_campus_video_url(event_id: str, video_url: str, *, has_clip: bool) 
     return campus_clip_url(eid) or url
 
 
+def _lookup_local_camera_id(*, channel_name: str = "", ipc_addr: str = "") -> str:
+    """Resolve DeepStream camera id from name or RTSP when the job lost camera_id."""
+    name = _str(channel_name)
+    ipc = _str(ipc_addr)
+    if not name and not ipc:
+        return ""
+    try:
+        from app.storage import get_store
+
+        cameras = get_store().list_cameras()
+    except Exception:
+        logger.exception("channel_id lookup: failed to list local cameras")
+        return ""
+
+    by_id: list[str] = []
+    by_name: list[str] = []
+    by_ipc: list[str] = []
+    for cam in cameras:
+        cam_id = _str(getattr(cam, "id", None))
+        if not cam_id:
+            continue
+        cam_name = _str(getattr(cam, "name", None))
+        cam_ext = _str(getattr(cam, "external_id", None))
+        if name and (cam_id == name or cam_ext == name):
+            by_id.append(cam_id)
+        if name and cam_name == name:
+            by_name.append(cam_id)
+        if ipc:
+            derived = ipc_addr_from_uri(_str(getattr(cam, "main_uri", None)))
+            if derived and derived == ipc:
+                by_ipc.append(cam_id)
+    for group in (by_id, by_name, by_ipc):
+        uniq = list(dict.fromkeys(group))
+        if len(uniq) == 1:
+            logger.info(
+                "channel_id recovered from local cameras name=%r ipc=%r → %s",
+                name,
+                ipc,
+                uniq[0],
+            )
+            return uniq[0]
+    return ""
+
+
+def _resolve_channel_id(payload: dict[str, Any], channel: dict[str, Any]) -> str:
+    found = (
+        _str(payload.get("camera_id"))
+        or _str(channel.get("channel_id"))
+        or _str(channel.get("camera_id"))
+        or _str(channel.get("external_id"))
+        or _str(channel.get("external_cam_id"))
+    )
+    if found:
+        return found
+    return _lookup_local_camera_id(
+        channel_name=_str(channel.get("channel_name")) or _str(payload.get("camera_name")),
+        ipc_addr=_str(channel.get("ipc_addr")) or _str(payload.get("ipc_addr")),
+    )
+
+
 def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
     """
-    Campus ``POST /api/v1/school/incident-ingest/`` body.
+    Campus ``POST /api/v1/incidents`` body.
 
     Same shape as a SmartBox alert: envelope + ``alert_info`` with
     ``channel_info`` / ``behaviour.algo_model`` / ``behaviour.video_url``.
-    Already-wrapped payloads are returned unchanged except ``video_url``,
-    which is always rewritten to a Campus-reachable clip URL.
+    Already-wrapped payloads get ``video_url`` rewritten and ``channel_id``
+    filled from ``camera_id`` or a local camera lookup (name / RTSP).
     """
     if isinstance(payload.get("alert_info"), dict):
         out = dict(payload)
@@ -229,10 +292,11 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
         if video_url:
             behaviour["video_url"] = video_url
             alert["behaviour"] = behaviour
-        channel_id = _str(payload.get("camera_id")) or _str(channel.get("channel_id"))
+        channel_id = _resolve_channel_id(payload, channel)
         if channel_id:
             channel["channel_id"] = channel_id
             alert["channel_info"] = channel
+            out["camera_id"] = channel_id
         out["alert_info"] = alert
         return out
     body = normalize_payload(payload)
@@ -254,11 +318,14 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
         behaviour["video_url"] = video_url
     if incident:
         behaviour["algo_model"] = _ALGO_MODEL.get(trigger, trigger)
+    camera_id = _str(body.get("camera_id")) or _lookup_local_camera_id(
+        channel_name=channel_name,
+        ipc_addr=ipc,
+    )
     channel_info: dict[str, Any] = {
         "channel_name": channel_name,
         "ipc_addr": ipc,
     }
-    camera_id = _str(body.get("camera_id"))
     if camera_id:
         channel_info["channel_id"] = camera_id
     alert_info: dict[str, Any] = {
@@ -277,6 +344,8 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
     }
     if event_id:
         envelope["event_id"] = event_id
+    if camera_id:
+        envelope["camera_id"] = camera_id
     return envelope
 
 
