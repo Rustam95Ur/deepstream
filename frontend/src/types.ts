@@ -187,6 +187,26 @@ export interface WebhookIn {
   max_retries: number;
 }
 
+export interface CameraSyncWebhookResult {
+  webhook_id: string;
+  webhook_name: string;
+  url: string;
+  ok: boolean;
+  http_status: number | null;
+  created: number;
+  updated: number;
+  skipped: number;
+  error: string;
+}
+
+export interface CameraSyncPush {
+  ok: boolean;
+  node_id: string;
+  cameras: number;
+  results: CameraSyncWebhookResult[];
+  error: string;
+}
+
 export interface OutboundJob {
   id: string;
   event_id: string;

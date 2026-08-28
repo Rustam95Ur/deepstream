@@ -348,6 +348,26 @@ class WebhookListOut(BaseModel):
     items: list[WebhookOut]
 
 
+class CameraSyncWebhookResult(BaseModel):
+    webhook_id: str
+    webhook_name: str
+    url: str
+    ok: bool
+    http_status: int | None = None
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    error: str = ""
+
+
+class CameraSyncPushOut(BaseModel):
+    ok: bool
+    node_id: str
+    cameras: int
+    results: list[CameraSyncWebhookResult] = []
+    error: str = ""
+
+
 class OutboundJobOut(BaseModel):
     id: str
     event_id: str

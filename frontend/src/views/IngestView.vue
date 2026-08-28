@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import Field from "../components/Field.vue";
 import SwitchField from "../components/SwitchField.vue";
 import { ApiError, api } from "../api";
 import { flash, saveSettings, store } from "../store";
-import type { Webhook } from "../types";
+import type { CameraSyncPush, Webhook } from "../types";
 
 const hooks = ref<Webhook[]>([]);
 const editingId = ref("");
 const showForm = ref(false);
 const savingHook = ref(false);
+const syncing = ref(false);
+const syncResult = ref<CameraSyncPush | null>(null);
 
 const form = reactive({
   name: "",
@@ -21,6 +23,10 @@ const form = reactive({
   max_retries: 5,
 });
 
+const canSync = computed(
+  () => hooks.value.some((hook) => hook.enabled && Boolean(hook.url.trim())),
+);
+
 onMounted(() => {
   void loadHooks();
 });
@@ -30,6 +36,27 @@ async function loadHooks() {
     hooks.value = (await api.webhooks()).items;
   } catch (err) {
     store.error = err instanceof ApiError ? err.message : "Не удалось загрузить webhook’и";
+  }
+}
+
+async function syncCameras() {
+  if (!canSync.value || syncing.value) return;
+  syncing.value = true;
+  store.error = "";
+  try {
+    const result = await api.syncCameras();
+    syncResult.value = result;
+    if (result.ok) {
+      const created = result.results.reduce((sum, row) => sum + row.created, 0);
+      const updated = result.results.reduce((sum, row) => sum + row.updated, 0);
+      flash(`Синхронизация: создано ${created}, обновлено ${updated}`);
+    } else {
+      store.error = result.error || result.results.find((row) => row.error)?.error || "Синхронизация не удалась";
+    }
+  } catch (err) {
+    store.error = err instanceof ApiError ? err.message : "Не удалось синхронизировать камеры";
+  } finally {
+    syncing.value = false;
   }
 }
 
@@ -209,6 +236,10 @@ Content-Type: application/json
     <section class="card">
       <div class="card-head">
         <h2>Webhook’и ({{ hooks.length }})</h2>
+        <p class="lede">
+          После добавления связи можно отправить все камеры ноды в nexus_incidents —
+          там создадутся записи или обновится статус (вкл/выкл).
+        </p>
       </div>
       <div class="card-body">
         <div v-if="hooks.length" class="table-wrap">
@@ -245,11 +276,28 @@ Content-Type: application/json
         </div>
         <div v-else class="empty">
           <p class="empty-title">Webhook’ов нет</p>
-          <p class="lede">События останутся в истории, но наружу не уйдут.</p>
+          <p class="lede">Сначала добавьте связь — тогда появится синхронизация камер.</p>
         </div>
+        <p v-if="syncResult" class="lede" style="margin-top: 1rem">
+          node={{ syncResult.node_id }}, камер={{ syncResult.cameras }}
+          <template v-for="row in syncResult.results" :key="row.webhook_id">
+            <br />
+            {{ row.webhook_name }}: {{ row.ok ? `создано ${row.created}, обновлено ${row.updated}` : row.error }}
+          </template>
+        </p>
       </div>
       <div class="card-foot end">
-        <button type="button" @click="openNew">Добавить</button>
+        <div class="row">
+          <button
+            v-if="canSync"
+            type="button"
+            :disabled="syncing"
+            @click="syncCameras"
+          >
+            {{ syncing ? "Синхронизация…" : "Синхронизировать камеры" }}
+          </button>
+          <button type="button" @click="openNew">Добавить</button>
+        </div>
       </div>
     </section>
 

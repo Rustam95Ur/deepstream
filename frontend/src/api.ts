@@ -1,4 +1,4 @@
-import type { Camera, CameraList, CameraQuery, CameraTestBatch, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
+import type { Camera, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -133,6 +133,8 @@ export const api = {
     }),
   deleteWebhook: (id: string) =>
     request<void>(`/api/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  syncCameras: () =>
+    request<CameraSyncPush>("/api/v1/webhooks/sync-cameras", { method: "POST" }),
   users: (query: UserQuery = {}) => request<UserList>(`/api/v1/users${qs(query)}`),
   getUser: (id: string) => request<User>(`/api/v1/users/${encodeURIComponent(id)}`),
   createUser: (body: { email: string; password: string; name: string }) =>

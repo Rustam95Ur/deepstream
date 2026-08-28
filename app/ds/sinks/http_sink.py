@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http.client
+import json
 import logging
 import ssl
 from typing import Any
@@ -12,19 +13,19 @@ from uuid import uuid4
 logger = logging.getLogger(__name__)
 
 
-def post_bytes(
+def _request_post(
     url: str,
     body: bytes,
     *,
     headers: dict[str, str] | None = None,
     timeout_sec: float = 5.0,
-) -> tuple[bool, int | None, str]:
+) -> tuple[bool, int | None, str, bytes]:
     target = (url or "").strip()
     if not target:
-        return False, None, "url empty"
+        return False, None, "url empty", b""
     parsed = urlparse(target)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        return False, None, "url must be http(s)"
+        return False, None, "url must be http(s)", b""
     https = parsed.scheme == "https"
     host = parsed.hostname
     port = parsed.port or (443 if https else 80)
@@ -66,17 +67,30 @@ def post_bytes(
                 status,
                 text[:200],
             )
-            return False, status, detail
-        return True, status, ""
+            return False, status, detail, raw
+        return True, status, "", raw
     except Exception as exc:
         logger.warning("webhook POST failed url=%s error=%s", target, exc)
-        return False, None, str(exc)
+        return False, None, str(exc), b""
     finally:
         if conn is not None:
             try:
                 conn.close()
             except Exception:
                 pass
+
+
+def post_bytes(
+    url: str,
+    body: bytes,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout_sec: float = 5.0,
+) -> tuple[bool, int | None, str]:
+    ok, status, error, _raw = _request_post(
+        url, body, headers=headers, timeout_sec=timeout_sec
+    )
+    return ok, status, error
 
 
 def build_multipart(
@@ -134,6 +148,32 @@ def post_json(
     )
 
 
+def post_json_data(
+    url: str,
+    body: bytes,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout_sec: float = 5.0,
+) -> tuple[bool, int | None, str, dict[str, Any] | None]:
+    """Like ``post_json``, plus parsed JSON object on HTTP success."""
+    ok, status, error, raw = _request_post(
+        url,
+        body,
+        headers={**(headers or {}), "Content-Type": "application/json"},
+        timeout_sec=timeout_sec,
+    )
+    if not ok:
+        return False, status, error, None
+    text = (raw or b"").decode("utf-8", errors="replace").strip()
+    if not text:
+        return True, status, "", None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return True, status, "", None
+    return True, status, "", data if isinstance(data, dict) else None
+
+
 def post_multipart(
     url: str,
     *,
@@ -171,8 +211,6 @@ class HttpSink:
         self.source_video = source_video
 
     def send(self, payload: dict[str, Any]) -> str | None:
-        import json
-
         from app.history import record_send
 
         event_id = str(payload.get("event_id") or "")

@@ -6,7 +6,8 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.api import ApiAuth
 from app.db import db_enabled
-from app.schemas import WebhookIn, WebhookListOut, WebhookOut
+from app.schemas import WebhookIn, WebhookListOut, WebhookOut, CameraSyncPushOut
+from app.camera_sync import push_cameras_to_webhooks
 from app.webhooks import (
     Webhook,
     create_webhook,
@@ -43,6 +44,12 @@ def _out(hook: Webhook) -> WebhookOut:
 def get_webhooks() -> WebhookListOut:
     _require_db()
     return WebhookListOut(items=[_out(w) for w in list_webhooks()])
+
+
+@router.post("/sync-cameras", response_model=CameraSyncPushOut)
+def sync_cameras() -> CameraSyncPushOut:
+    _require_db()
+    return CameraSyncPushOut(**push_cameras_to_webhooks())
 
 
 @router.post("", response_model=WebhookOut, status_code=status.HTTP_201_CREATED)
