@@ -214,6 +214,7 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
         out.pop(CLIP_META_KEY, None)
         alert = dict(payload["alert_info"] or {})
         behaviour = dict(alert.get("behaviour") or {})
+        channel = dict(alert.get("channel_info") or {})
         clip = clip_from_payload(payload)
         video_url = _refresh_campus_video_url(
             _str(payload.get("event_id")),
@@ -228,7 +229,11 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
         if video_url:
             behaviour["video_url"] = video_url
             alert["behaviour"] = behaviour
-            out["alert_info"] = alert
+        channel_id = _str(payload.get("camera_id")) or _str(channel.get("channel_id"))
+        if channel_id:
+            channel["channel_id"] = channel_id
+            alert["channel_info"] = channel
+        out["alert_info"] = alert
         return out
     body = normalize_payload(payload)
     trigger = _str(body.get("trigger_type"))
@@ -249,16 +254,20 @@ def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
         behaviour["video_url"] = video_url
     if incident:
         behaviour["algo_model"] = _ALGO_MODEL.get(trigger, trigger)
+    channel_info: dict[str, Any] = {
+        "channel_name": channel_name,
+        "ipc_addr": ipc,
+    }
+    camera_id = _str(body.get("camera_id"))
+    if camera_id:
+        channel_info["channel_id"] = camera_id
     alert_info: dict[str, Any] = {
         "type": 1 if incident else (trigger or "stream_silent"),
         "device_info": {
             "device_name": device_name,
             "device_sn": device_name,
         },
-        "channel_info": {
-            "channel_name": channel_name,
-            "ipc_addr": ipc,
-        },
+        "channel_info": channel_info,
         "behaviour": behaviour,
     }
     envelope: dict[str, Any] = {
