@@ -404,15 +404,31 @@ def _clip_filename(event_id: str) -> str:
     return f"{safe or 'clip'}.mp4"
 
 
-def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
+def _delivery_skip_reason(job: OutboundJobRow) -> tuple[Webhook | None, str]:
+    """Return ``(hook, reason)``. Non-empty reason means do not POST."""
+    if not get_store().get_settings().enable_http_sink:
+        return None, "http sink disabled"
     hook: Webhook | None = None
     with session_scope(write=False) as session:
         row = session.get(WebhookRow, job.webhook_id)
         if row is not None:
             hook = _from_row(row)
-    if hook is not None and not hook.enabled:
-        return False, None, "webhook disabled"
-    url = (hook.url if hook else job.url) or job.url
+    if hook is None or not hook.enabled or not (hook.url or "").strip():
+        return hook, "webhook disabled"
+    return hook, ""
+
+
+def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
+    hook, skip = _delivery_skip_reason(job)
+    if skip:
+        logger.info(
+            "webhook skip event=%s reason=%s url=%s",
+            job.event_id,
+            skip,
+            job.url,
+        )
+        return False, None, skip
+    url = hook.url if hook else job.url
     timeout = hook.timeout_sec if hook else 5.0
     outbound = to_smartbox_ingest(job.payload or {})
     outbound.pop(CLIP_META_KEY, None)
@@ -453,8 +469,11 @@ def _deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     return post_json(url, body, headers=headers, timeout_sec=timeout)
 
 
+_SKIP_DELIVERY = frozenset({"webhook disabled", "http sink disabled"})
+
+
 def _non_retryable(error: str) -> bool:
-    return (error or "").strip().lower() == "webhook disabled"
+    return (error or "").strip().lower() in _SKIP_DELIVERY
 
 
 def _claim_jobs(limit: int = 8) -> list[str]:
@@ -524,7 +543,8 @@ def process_job(job_id: str) -> None:
                 row.next_attempt_at = now + timedelta(seconds=_backoff_s(row.attempts))
         event_id = row.event_id
         url = row.url
-        status = "ok" if ok else "error"
+        skipped = (not ok) and _non_retryable(row.last_error)
+        status = "ok" if ok else ("skipped" if skipped else "error")
         attempts = row.attempts
         last_error = row.last_error
         final_status = row.status
@@ -589,7 +609,7 @@ class OutboundWorker:
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
-                if db_enabled():
+                if db_enabled() and get_store().get_settings().enable_http_sink:
                     ids = _claim_jobs()
                     for job_id in ids:
                         try:

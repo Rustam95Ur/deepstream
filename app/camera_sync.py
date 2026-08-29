@@ -63,8 +63,16 @@ def build_camera_sync_payload() -> dict[str, Any]:
 
 
 def push_cameras_to_webhooks() -> dict[str, Any]:
-    hooks = [h for h in list_enabled_webhooks() if (h.url or "").strip()]
     payload = build_camera_sync_payload()
+    if not get_store().get_settings().enable_http_sink:
+        return {
+            "ok": False,
+            "node_id": payload["node_id"],
+            "cameras": len(payload["cameras"]),
+            "results": [],
+            "error": "отправка по HTTP выключена",
+        }
+    hooks = [h for h in list_enabled_webhooks() if (h.url or "").strip()]
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     results: list[dict[str, Any]] = []
     if not hooks:
