@@ -137,9 +137,6 @@ def _is_video_role() -> bool:
 
 
 def motherboard_serial() -> str:
-    env = (os.environ.get("NEXUS_DS_BOARD_SERIAL") or "").strip()
-    if env:
-        return env
     for path in (
         Path("/sys/class/dmi/id/board_serial"),
         Path("/sys/class/dmi/id/product_serial"),
