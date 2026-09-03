@@ -7,6 +7,7 @@ import logging
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from app.billing import license_lock_detail, license_ok
 from app.ds.sinks.http_sink import post_json_data
 from app.storage import get_store
 from app.webhooks import list_enabled_webhooks
@@ -64,6 +65,14 @@ def build_camera_sync_payload() -> dict[str, Any]:
 
 def push_cameras_to_webhooks() -> dict[str, Any]:
     payload = build_camera_sync_payload()
+    if not license_ok():
+        return {
+            "ok": False,
+            "node_id": payload["node_id"],
+            "cameras": len(payload["cameras"]),
+            "results": [],
+            "error": license_lock_detail(),
+        }
     if not get_store().get_settings().enable_http_sink:
         return {
             "ok": False,

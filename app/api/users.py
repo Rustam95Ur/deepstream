@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
-from app.api import ApiAuth
+from app.api import ApiAuth, LicenseAuth
 from app.paging import cursor_or_400, cursor_str
 from app.schemas import UserIn, UserListOut, UserOut, UserUpdateIn
 from app.users import (
@@ -20,7 +20,11 @@ from app.users import (
     user_count,
 )
 
-router = APIRouter(prefix="/api/v1/users", tags=["users"], dependencies=[ApiAuth])
+router = APIRouter(
+    prefix="/api/v1/users",
+    tags=["users"],
+    dependencies=[ApiAuth, LicenseAuth],
+)
 
 
 def _aware(dt: datetime | None) -> datetime | None:

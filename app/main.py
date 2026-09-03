@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,6 +19,7 @@ from app.api.public_clips import router as public_clips_router
 from app.api.node import router as node_router
 from app.api.users import router as users_router
 from app.api.webhooks import router as webhooks_router
+from app.billing import apply_runtime_lock, validate_billing_key
 from app.db import init_db
 from app.minio_store import advertised_public_base
 from app.storage import get_store
@@ -30,9 +32,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nexus_deepstream")
 
+_billing_stop = threading.Event()
+_billing_thread: threading.Thread | None = None
+_BILLING_RECHECK_S = 300.0
+
+
+def _billing_watch() -> None:
+    while not _billing_stop.wait(_BILLING_RECHECK_S):
+        try:
+            check = apply_runtime_lock(validate_billing_key())
+            logger.info(
+                "billing recheck valid=%s reason=%s",
+                check.valid,
+                check.reason or "-",
+            )
+        except Exception:
+            logger.exception("billing recheck failed")
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    global _billing_thread
     init_db()
     store = get_store()
     settings = store.get_settings()
@@ -44,8 +64,24 @@ async def lifespan(_app: FastAPI):
         store.data_dir,
         advertised_public_base(),
     )
+    check = apply_runtime_lock(validate_billing_key(settings))
+    logger.info(
+        "billing check valid=%s reason=%s url=%s serial=%s",
+        check.valid,
+        check.reason or "-",
+        check.url,
+        check.motherboard_serial or "-",
+    )
+    _billing_stop.clear()
+    _billing_thread = threading.Thread(
+        target=_billing_watch, name="billing-recheck", daemon=True
+    )
+    _billing_thread.start()
     get_outbound_worker().start()
     yield
+    _billing_stop.set()
+    if _billing_thread and _billing_thread.is_alive():
+        _billing_thread.join(timeout=3.0)
     get_outbound_worker().stop()
 
 

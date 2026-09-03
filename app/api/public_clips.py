@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
+from app.billing import license_lock_detail, license_ok
 from app.db import db_enabled, session_scope
 from app.ds.payload import clip_from_payload
 from app.minio_store import get_minio_store
@@ -16,6 +17,8 @@ router = APIRouter(prefix="/api/v1/public", tags=["public"])
 
 @router.get("/clips/{event_id}.mp4")
 def public_clip(event_id: str) -> StreamingResponse:
+    if not license_ok():
+        raise HTTPException(status_code=403, detail=license_lock_detail())
     eid = event_id.strip().removesuffix(".mp4")
     if not eid:
         raise HTTPException(status_code=404, detail="Event not found")

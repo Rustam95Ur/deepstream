@@ -6,6 +6,8 @@ export interface Session {
   name: string;
   node_id: string;
   node_name: string;
+  license_valid: boolean;
+  license_reason: string;
 }
 
 export interface NodeSettings {
@@ -16,6 +18,9 @@ export interface NodeSettings {
   enable_http_sink: boolean;
   enable_log_sink: boolean;
   enable_clip_record: boolean;
+  billing_url: string;
+  billing_api_key: string;
+  billing_timeout_sec: number;
   trigger_mode: string;
   enabled_triggers: string[];
   min_tracks: number;
@@ -99,6 +104,17 @@ export interface LogLine {
   level: string;
   logger: string;
   message: string;
+}
+
+export interface BillingCheck {
+  url: string;
+  motherboard_serial: string;
+  api_key_configured: boolean;
+  valid: boolean;
+  reason: string;
+  client_name: string;
+  module: string;
+  checked_at: string | null;
 }
 
 export interface WorkerStatus {

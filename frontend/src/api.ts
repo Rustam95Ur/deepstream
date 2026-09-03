@@ -1,4 +1,4 @@
-import type { Camera, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
+import type { BillingCheck, Camera, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -72,6 +72,12 @@ export const api = {
   saveSettings: (body: NodeSettings) =>
     request<NodeSettings>("/api/v1/settings", {
       method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  billing: () => request<BillingCheck>("/api/v1/billing"),
+  validateBilling: (body: { billing_url?: string; billing_api_key?: string } = {}) =>
+    request<BillingCheck>("/api/v1/billing/validate", {
+      method: "POST",
       body: JSON.stringify(body),
     }),
   cameras: (query: CameraQuery = {}) => request<CameraList>(`/api/v1/cameras${qs(query)}`),

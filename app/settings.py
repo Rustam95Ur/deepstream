@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.trigger_thresholds import merge_trigger_thresholds, sync_flat_from_profiles
 from app.trigger_types import DEFAULT_ENABLED_TRIGGERS, normalize_enabled_triggers
 
+DEFAULT_BILLING_VALIDATE_URL = "http://localhost/api/v1/public/keys/validate"
+
 
 def _default_data_dir() -> Path:
     raw = (os.environ.get("NEXUS_DS_DATA_DIR") or "").strip()
@@ -34,6 +36,24 @@ class NodeSettings(BaseModel):
     enable_http_sink: bool = True
     enable_log_sink: bool = True
     enable_clip_record: bool = True
+
+    billing_url: str = Field(
+        default=DEFAULT_BILLING_VALIDATE_URL,
+        description="Nexus Billing POST /api/v1/public/keys/validate",
+    )
+    billing_api_key: str = Field(default="", max_length=256)
+    billing_timeout_sec: float = Field(default=5.0, ge=1.0, le=30.0)
+
+    @field_validator("billing_url", mode="before")
+    @classmethod
+    def _billing_url(cls, value: object) -> str:
+        raw = str(value).strip() if value is not None else ""
+        return raw or DEFAULT_BILLING_VALIDATE_URL
+
+    @field_validator("billing_api_key", mode="before")
+    @classmethod
+    def _billing_api_key(cls, value: object) -> str:
+        return str(value).strip() if value is not None else ""
 
     # Trigger / record / pipeline (same semantics as Campus Redis config)
     trigger_mode: str = "convergence"

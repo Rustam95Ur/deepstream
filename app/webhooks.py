@@ -223,8 +223,19 @@ def _backoff_s(attempts: int) -> float:
 
 
 def enqueue_payload(payload: dict[str, Any], *, reason: str = "trigger") -> int:
+    from app.billing import license_lock_detail, license_ok
+
     body = normalize_payload(payload)
     event_id = str(body.get("event_id") or "")
+    if not license_ok():
+        record_send(
+            event_id=event_id,
+            sink="webhook",
+            url="",
+            status="skipped",
+            error=license_lock_detail(),
+        )
+        return 0
     if requires_video(body) and not has_clip_source(body):
         why = missing_video_reason(body) or "video required"
         record_send(
@@ -609,7 +620,13 @@ class OutboundWorker:
     def _loop(self) -> None:
         while not self._stop.is_set():
             try:
-                if db_enabled() and get_store().get_settings().enable_http_sink:
+                from app.billing import license_ok
+
+                if (
+                    db_enabled()
+                    and get_store().get_settings().enable_http_sink
+                    and license_ok()
+                ):
                     ids = _claim_jobs()
                     for job_id in ids:
                         try:

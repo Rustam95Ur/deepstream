@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select, tuple_
 
-from app.api import ApiAuth
+from app.api import ApiAuth, LicenseAuth
 from app.db import db_enabled, session_scope
 from app.ds.payload import clip_from_payload, normalize_payload
 from app.minio_store import campus_clip_url, get_minio_store
@@ -28,7 +28,11 @@ from app.schemas import (
 )
 from app.webhooks import resend_event, retry_job
 
-router = APIRouter(prefix="/api/v1/history", tags=["history"], dependencies=[ApiAuth])
+router = APIRouter(
+    prefix="/api/v1/history",
+    tags=["history"],
+    dependencies=[ApiAuth, LicenseAuth],
+)
 
 
 def _require_db() -> None:

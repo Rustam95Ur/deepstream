@@ -25,6 +25,7 @@ const titles: Record<string, { title: string; desc: string }> = {
 };
 
 const page = computed(() => titles[String(route.name)] || titles.overview);
+const licenseLocked = computed(() => store.session?.license_valid === false);
 const bannerError = computed(() => store.error || store.worker?.last_error || "");
 
 let workerTimer: ReturnType<typeof setInterval> | null = null;
@@ -49,7 +50,7 @@ onMounted(async () => {
     }
   }
   workerTimer = setInterval(() => {
-    if (!store.loaded) return;
+    if (!store.loaded || licenseLocked.value) return;
     void api.worker().then((w) => {
       store.worker = w;
     }).catch(() => undefined);
@@ -75,6 +76,10 @@ async function logout() {
 
 function go(name: string) {
   mobileOpen.value = false;
+  if (licenseLocked.value && name !== "settings") {
+    router.push({ name: "settings" });
+    return;
+  }
   router.push({ name });
 }
 
@@ -143,7 +148,8 @@ async function onStop() {
           :key="item.name"
           type="button"
           class="service-tile"
-          :class="{ active: isNavActive(item.name) }"
+          :class="{ active: isNavActive(item.name), locked: licenseLocked && item.name !== 'settings' }"
+          :disabled="licenseLocked && item.name !== 'settings'"
           @click="go(item.name)"
         >
           <span class="tile-icon" aria-hidden="true">

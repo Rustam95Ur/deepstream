@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
-from app.api import CameraApiAuth
+from app.api import CameraApiAuth, LicenseAuth
 from app.paging import cursor_id, cursor_or_400
 from app.schemas import (
     CameraIn,
@@ -30,7 +30,9 @@ _TEST_META = {
 }
 
 router = APIRouter(
-    prefix="/api/v1/cameras", tags=["cameras"], dependencies=[CameraApiAuth]
+    prefix="/api/v1/cameras",
+    tags=["cameras"],
+    dependencies=[CameraApiAuth, LicenseAuth],
 )
 
 

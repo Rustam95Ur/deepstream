@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api import ApiAuth
+from app.api import ApiAuth, LicenseAuth
 from app.db import db_enabled
 from app.schemas import WebhookIn, WebhookListOut, WebhookOut, CameraSyncPushOut
 from app.camera_sync import push_cameras_to_webhooks
@@ -17,7 +17,11 @@ from app.webhooks import (
     update_webhook,
 )
 
-router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"], dependencies=[ApiAuth])
+router = APIRouter(
+    prefix="/api/v1/webhooks",
+    tags=["webhooks"],
+    dependencies=[ApiAuth, LicenseAuth],
+)
 
 
 def _require_db() -> None:

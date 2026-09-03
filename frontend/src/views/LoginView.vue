@@ -22,8 +22,8 @@ async function onSubmit() {
   error.value = "";
   pending.value = true;
   try {
-    await api.login(email.value, password.value, passwordConfirm.value);
-    await router.push({ name: "overview" });
+    const sess = await api.login(email.value, password.value, passwordConfirm.value);
+    await router.push({ name: sess.license_valid ? "overview" : "settings" });
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : "Не удалось войти";
   } finally {

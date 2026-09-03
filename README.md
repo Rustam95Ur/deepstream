@@ -141,6 +141,10 @@ See `.env.example` for pool, queue, and cache knobs.
 | PATCH | `/api/v1/cameras/{id}` | partial update |
 | DELETE | `/api/v1/cameras/{id}` | remove |
 | GET/PUT | `/api/v1/settings` | node settings |
+| GET | `/api/v1/billing` | last Nexus Billing key check (serial, valid, reason) |
+| POST | `/api/v1/billing/validate` | POST key + motherboard serial to `billing_url` |
+
+If the key is missing or invalid, the node locks: pipeline and ring-buffer stop, outbound webhooks and public clips are refused, camera/history/user APIs return `403`. Login and **Settings** stay open so the key can be fixed. `/health` stays `200` and reports `license_valid`.
 | GET | `/api/v1/video/health` | GPU pipeline + per-camera ring-buffer health |
 | GET/POST | `/api/v1/webhooks` | webhook list / create `{name, url, enabled, login, password, timeout_sec, max_retries}` |
 | PUT/DELETE | `/api/v1/webhooks/{id}` | update / remove webhook |

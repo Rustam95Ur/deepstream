@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from sqlalchemy import text
 
+from app.billing import apply_runtime_lock, last_billing_check, license_ok, validate_billing_key
 from app.db import db_enabled, get_engine, session_scope
 from app.ds.log_buffer import install as install_log_buffer
 from app.ds.log_buffer import snapshot as log_snapshot
@@ -52,7 +53,14 @@ def _wait_for_db(*, attempts: int = 40, delay_s: float = 2.0) -> None:
     raise RuntimeError(f"database not ready: {last}")
 
 
-def _config_fingerprint() -> tuple[str, tuple]:
+def _license_fp() -> str:
+    check = last_billing_check()
+    if check is None:
+        return "none"
+    return f"{int(check.valid)}:{check.reason}:{check.checked_at}"
+
+
+def _config_fingerprint() -> tuple[str, tuple, str]:
     store = get_store()
     store.invalidate_camera_cache()
     settings = store.get_settings()
@@ -67,11 +75,11 @@ def _config_fingerprint() -> tuple[str, tuple]:
         for c in store.list_cameras()
         if c.enabled
     )
-    return settings.model_dump_json(), cams
+    return settings.model_dump_json(), cams, _license_fp()
 
 
 def _watch_config() -> None:
-    last: tuple[str, tuple] | None = None
+    last: tuple[str, tuple, str] | None = None
     while not _watch_stop.wait(2.0):
         try:
             fp = _config_fingerprint()
@@ -79,11 +87,16 @@ def _watch_config() -> None:
             logger.exception("video: config watch failed")
             continue
         if last is not None and fp != last:
-            logger.info(
-                "video: cameras/settings changed — reload pipeline + ring-buffer"
-            )
-            get_manager().request_reload()
-            get_ring_buffer().request_refresh()
+            if not license_ok():
+                logger.warning("video: license invalid — stop pipeline + ring-buffer")
+                apply_runtime_lock()
+            else:
+                logger.info(
+                    "video: cameras/settings/license changed — reload pipeline + ring-buffer"
+                )
+                apply_runtime_lock()
+                get_manager().request_reload()
+                get_ring_buffer().request_refresh()
         last = fp
 
 
@@ -153,17 +166,18 @@ async def lifespan(_app: FastAPI):
     install_log_buffer()
     get_history_writer().start()
     get_outbound_worker().start()
-    get_ring_buffer().start()
     settings = get_store().get_settings()
+    check = apply_runtime_lock(validate_billing_key(settings))
     logger.info(
-        "Nexus DeepStream video node_id=%s auto_start=%s token=%s campus_clips=%s",
+        "Nexus DeepStream video node_id=%s auto_start=%s token=%s campus_clips=%s license=%s",
         settings.node_id,
         settings.auto_start_pipeline,
         "on" if video_token() else "off",
         advertised_public_base(),
+        "ok" if check.valid else (check.reason or "invalid"),
     )
-    if settings.auto_start_pipeline:
-        get_manager().start()
+    if not check.valid:
+        logger.warning("license lock — pipeline and ring-buffer not started")
     _start_watch()
     yield
     _stop_watch()
@@ -192,6 +206,10 @@ def worker_status() -> WorkerStatusOut:
 
 @app.post("/worker/start", response_model=WorkerStatusOut, dependencies=[VideoAuth])
 def worker_start() -> WorkerStatusOut:
+    if not license_ok():
+        logger.warning("license lock — refuse pipeline start")
+        apply_runtime_lock()
+        return get_manager().status()
     get_ring_buffer().request_refresh()
     return get_manager().start()
 
@@ -205,6 +223,10 @@ def worker_stop() -> WorkerStatusOut:
 def worker_reload() -> WorkerStatusOut:
     store = get_store()
     store.invalidate_camera_cache()
+    if not license_ok():
+        logger.warning("license lock — reload becomes stop")
+        apply_runtime_lock()
+        return get_manager().status()
     logger.info("video: reload requested")
     get_manager().request_reload()
     get_ring_buffer().request_refresh()

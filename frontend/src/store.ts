@@ -35,16 +35,19 @@ export function flash(text: string) {
 export async function loadConsole() {
   store.error = "";
   try {
-    const [s, c, w, sess] = await Promise.all([
-      api.settings(),
-      api.cameras(),
-      api.worker(),
-      api.session(),
-    ]);
+    const [s, sess] = await Promise.all([api.settings(), api.session()]);
     store.settings = s;
+    store.session = sess;
+    if (!sess.license_valid) {
+      store.cameras = [];
+      store.worker = null;
+      store.loaded = true;
+      store.error = sess.license_reason || "Лицензия недействительна";
+      return;
+    }
+    const [c, w] = await Promise.all([api.cameras(), api.worker()]);
     store.cameras = c.cameras;
     store.worker = w;
-    store.session = sess;
     store.loaded = true;
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) throw err;
@@ -57,7 +60,14 @@ export async function saveSettings() {
   store.saving = true;
   try {
     store.settings = await api.saveSettings(store.settings);
-    flash("Сохранено");
+    store.session = await api.session();
+    if (store.session.license_valid) {
+      flash("Сохранено");
+      return;
+    }
+    store.cameras = [];
+    store.worker = null;
+    store.error = store.session.license_reason || "Лицензия недействительна";
   } catch (err) {
     store.error = err instanceof ApiError ? err.message : "Не удалось сохранить";
   } finally {

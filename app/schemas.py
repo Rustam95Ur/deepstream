@@ -239,6 +239,24 @@ class HealthOut(BaseModel):
     pipeline_available: bool
     pipeline_detail: str = ""
     triggers_url: str = ""
+    license_valid: bool = False
+    license_reason: str = ""
+
+
+class BillingCheckOut(BaseModel):
+    url: str
+    motherboard_serial: str = ""
+    api_key_configured: bool = False
+    valid: bool = False
+    reason: str = ""
+    client_name: str = ""
+    module: str = ""
+    checked_at: datetime | None = None
+
+
+class BillingValidateIn(BaseModel):
+    billing_url: str | None = None
+    billing_api_key: str | None = None
 
 
 class CameraSkipOut(BaseModel):
@@ -530,3 +548,5 @@ class SessionOut(BaseModel):
     name: str = ""
     node_id: str
     node_name: str
+    license_valid: bool = False
+    license_reason: str = ""

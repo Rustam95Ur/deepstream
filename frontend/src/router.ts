@@ -44,8 +44,11 @@ router.beforeEach(async (to) => {
     if (to.matched.some((record) => record.meta.auth) && !session.authenticated) {
       return { name: "login" };
     }
+    if (session.authenticated && !session.license_valid && to.name !== "settings" && to.name !== "login") {
+      return { name: "settings" };
+    }
     if (to.name === "login" && session.authenticated) {
-      return { name: "overview" };
+      return { name: session.license_valid ? "overview" : "settings" };
     }
   } catch {
     if (to.name !== "login") {

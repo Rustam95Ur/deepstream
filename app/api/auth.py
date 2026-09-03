@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
+from app.billing import license_lock_detail, license_ok
 from app.schemas import LoginIn, SessionOut
 from app.storage import get_store
 from app.users import (
@@ -29,6 +30,7 @@ def _session_out(
 ) -> SessionOut:
     settings = get_store().get_settings()
     authed = bool(user) if authenticated is None else authenticated
+    valid = license_ok()
     return SessionOut(
         authenticated=authed,
         setup=not has_users(),
@@ -37,6 +39,8 @@ def _session_out(
         name=user.name if user else "",
         node_id=settings.node_id,
         node_name=settings.node_name,
+        license_valid=valid,
+        license_reason="" if valid else license_lock_detail(),
     )
 
 

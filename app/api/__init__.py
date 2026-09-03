@@ -6,6 +6,7 @@ import base64
 
 from fastapi import Depends, HTTPException, Request, status
 
+from app.billing import require_valid_license
 from app.users import UserRecord, has_users
 from app.web.session import get_session_user
 from app.webhooks import Webhook, authenticate_webhook_login
@@ -87,3 +88,4 @@ def require_camera_auth(request: Request) -> UserRecord | Webhook | None:
 
 ApiAuth = Depends(require_api_token)
 CameraApiAuth = Depends(require_camera_auth)
+LicenseAuth = Depends(require_valid_license)

@@ -444,6 +444,16 @@ input:focus-visible,
   color: var(--primary);
   border-color: transparent;
 }
+.service-tile:disabled,
+.service-tile.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.service-tile:disabled:hover,
+.service-tile.locked:hover {
+  background: #f9f9f9;
+  color: var(--gray-700);
+}
 .tile-icon { display: grid; place-items: center; }
 
 .app-main {
