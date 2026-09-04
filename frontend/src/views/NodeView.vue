@@ -21,7 +21,9 @@ const reasonLabels: Record<string, string> = {
 
 function reasonText(row: BillingCheck) {
   if (row.valid) return "ключ действителен";
-  return reasonLabels[row.reason] || row.reason || "нет статуса";
+  const base = reasonLabels[row.reason] || row.reason || "нет статуса";
+  if (row.destroy) return `${base} — контейнеры будут удалены`;
+  return base;
 }
 
 function checkedAt(iso?: string | null) {
@@ -91,7 +93,7 @@ onMounted(() => {
     <form class="card" @submit.prevent="saveSettings">
       <div class="card-head">
         <h2>Nexus Billing</h2>
-        <p class="lede">Проверка API-ключа по серийному номеру материнской платы.</p>
+        <p class="lede">Проверка API-ключа в Nexus Billing.</p>
       </div>
       <div class="card-body form-grid">
         <Field
@@ -106,12 +108,6 @@ onMounted(() => {
           type="password"
           label="API-ключ"
           autocomplete="off"
-        />
-        <Field
-          id="board-serial"
-          :model-value="check?.motherboard_serial || ''"
-          label="Серийный номер платы"
-          readonly
         />
       </div>
       <div class="card-foot end">

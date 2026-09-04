@@ -110,6 +110,8 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - nexus-ds-data:/data/nexus_deepstream
+      # Needed so stolen_key + destroy=true can stop/remove this compose project
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test:
         [
@@ -176,6 +178,7 @@ services:
       - ./models:/opt/nexus_deepstream/models
       - ./app:/opt/nexus_deepstream/app
       - ./shell:/opt/nexus_deepstream/shell:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
       - "host.docker.internal:host-gateway"
     gpus: all

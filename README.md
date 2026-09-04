@@ -145,6 +145,8 @@ See `.env.example` for pool, queue, and cache knobs.
 | POST | `/api/v1/billing/validate` | POST key + motherboard serial to `billing_url` |
 
 If the key is missing or invalid, the node locks: pipeline and ring-buffer stop, outbound webhooks and public clips are refused, camera/history/user APIs return `403`. Login and **Settings** stay open so the key can be fixed. `/health` stays `200` and reports `license_valid`.
+
+If billing returns `stolen_key` with `destroy: true` (wrong motherboard serial for this key), the API/video containers tear down **all containers of this compose project** via the mounted Docker socket (`docker.sock`). Volumes are kept.
 | GET | `/api/v1/video/health` | GPU pipeline + per-camera ring-buffer health |
 | GET/POST | `/api/v1/webhooks` | webhook list / create `{name, url, enabled, login, password, timeout_sec, max_retries}` |
 | PUT/DELETE | `/api/v1/webhooks/{id}` | update / remove webhook |

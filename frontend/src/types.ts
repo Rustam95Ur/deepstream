@@ -112,6 +112,7 @@ export interface BillingCheck {
   api_key_configured: boolean;
   valid: boolean;
   reason: string;
+  destroy: boolean;
   client_name: string;
   module: string;
   checked_at: string | null;

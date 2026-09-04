@@ -249,6 +249,7 @@ class BillingCheckOut(BaseModel):
     api_key_configured: bool = False
     valid: bool = False
     reason: str = ""
+    destroy: bool = False
     client_name: str = ""
     module: str = ""
     checked_at: datetime | None = None

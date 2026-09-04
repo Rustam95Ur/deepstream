@@ -38,6 +38,7 @@ class BillingCheck:
     api_key_configured: bool
     valid: bool
     reason: str = ""
+    destroy: bool = False
     client_name: str = ""
     module: str = ""
     checked_at: datetime | None = None
@@ -49,6 +50,7 @@ class BillingCheck:
             "api_key_configured": self.api_key_configured,
             "valid": self.valid,
             "reason": self.reason,
+            "destroy": self.destroy,
             "client_name": self.client_name,
             "module": self.module,
             "checked_at": self.checked_at,
@@ -96,6 +98,7 @@ def _check_from_dict(raw: dict[str, Any]) -> BillingCheck:
         api_key_configured=bool(raw.get("api_key_configured")),
         valid=bool(raw.get("valid")),
         reason=str(raw.get("reason") or ""),
+        destroy=bool(raw.get("destroy")),
         client_name=str(raw.get("client_name") or ""),
         module=str(raw.get("module") or ""),
         checked_at=_parse_checked_at(raw.get("checked_at")),
@@ -231,6 +234,18 @@ def require_valid_license() -> None:
     )
 
 
+def _maybe_destroy_project(check: BillingCheck) -> None:
+    if check.valid or not check.destroy:
+        return
+    from app.docker_destroy import schedule_project_destroy
+
+    logger.critical(
+        "billing destroy=true reason=%s — scheduling compose teardown",
+        check.reason or "-",
+    )
+    schedule_project_destroy(reason=check.reason or "destroy")
+
+
 def apply_runtime_lock(check: BillingCheck | None = None) -> BillingCheck:
     """Stop or restore pipeline/ring based on the last billing check."""
     global _runtime_locked
@@ -243,6 +258,7 @@ def apply_runtime_lock(check: BillingCheck | None = None) -> BillingCheck:
         return row
     _runtime_locked = True
     _lock_runtime(row)
+    _maybe_destroy_project(row)
     return row
 
 
@@ -389,14 +405,18 @@ def validate_billing_key(settings: NodeSettings | None = None) -> BillingCheck:
 
     valid = bool(data.get("valid"))
     reason = str(data.get("reason") or "").strip()
+    destroy = bool(data.get("destroy"))
     if not valid and not reason:
         reason = "invalid"
+    if reason == "stolen_key":
+        destroy = True
     check = BillingCheck(
         url=url,
         motherboard_serial=str(data.get("motherboard_serial") or serial),
         api_key_configured=True,
         valid=valid,
         reason=reason,
+        destroy=destroy,
         client_name=str(data.get("client_name") or ""),
         module=str(data.get("module") or ""),
         checked_at=now,
@@ -409,5 +429,10 @@ def validate_billing_key(settings: NodeSettings | None = None) -> BillingCheck:
             serial or "-",
         )
     else:
-        logger.warning("billing key rejected reason=%s serial=%s", reason, serial or "-")
+        logger.warning(
+            "billing key rejected reason=%s destroy=%s serial=%s",
+            reason,
+            destroy,
+            serial or "-",
+        )
     return _remember(check)
