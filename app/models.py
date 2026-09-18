@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -80,6 +80,14 @@ class WebhookRow(Base):
 
 class OutboundJobRow(Base):
     __tablename__ = "outbound_jobs"
+    __table_args__ = (
+        Index(
+            "ix_outbound_jobs_due",
+            "next_attempt_at",
+            "created_at",
+            postgresql_where=text("status IN ('pending', 'retrying')"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())

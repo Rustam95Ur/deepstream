@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import db_enabled, session_scope
@@ -26,6 +26,7 @@ from app.ds.payload import (
 )
 from app.ds.sinks.http_sink import post_json, post_multipart
 from app.history import record_send
+from app.logging_config import log_extra
 from app.minio_store import get_minio_store
 from app.models import OutboundJobRow, TriggerEventRow, WebhookRow
 from app.settings import NodeSettings
@@ -34,7 +35,6 @@ from app.web.passwords import hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 
-OPEN_STATUSES = ("pending", "retrying")
 MAX_BACKOFF_S = 60.0
 VIDEO_POST_TIMEOUT_S = 120.0
 
@@ -487,27 +487,39 @@ def _non_retryable(error: str) -> bool:
     return (error or "").strip().lower() in _SKIP_DELIVERY
 
 
+# Inline status literals so Postgres can use ix_outbound_jobs_due.
+# Select id only: loading payload JSONB under FOR UPDATE timed out at 5s.
+_CLAIM_SQL = text(
+    """
+    WITH due AS (
+        SELECT id
+        FROM outbound_jobs
+        WHERE status IN ('pending', 'retrying')
+          AND next_attempt_at <= :now
+        ORDER BY next_attempt_at, created_at
+        LIMIT :limit
+        FOR UPDATE SKIP LOCKED
+    )
+    UPDATE outbound_jobs AS j
+    SET status = 'retrying',
+        next_attempt_at = :claim_at,
+        updated_at = :now
+    FROM due
+    WHERE j.id = due.id
+    RETURNING j.id
+    """
+)
+
+
 def _claim_jobs(limit: int = 8) -> list[str]:
     now = _utcnow()
-    ids: list[str] = []
+    claim_at = now + timedelta(seconds=max(30, int(VIDEO_POST_TIMEOUT_S) + 15))
     with session_scope(write=True) as session:
-        rows = list(
-            session.scalars(
-                select(OutboundJobRow)
-                .where(OutboundJobRow.status.in_(OPEN_STATUSES))
-                .where(OutboundJobRow.next_attempt_at <= now)
-                .order_by(OutboundJobRow.next_attempt_at, OutboundJobRow.created_at)
-                .limit(limit)
-                .with_for_update(skip_locked=True)
-            ).all()
+        rows = session.execute(
+            _CLAIM_SQL,
+            {"now": now, "claim_at": claim_at, "limit": int(limit)},
         )
-        claim_at = now + timedelta(seconds=max(30, int(VIDEO_POST_TIMEOUT_S) + 15))
-        for row in rows:
-            row.status = "retrying"
-            row.next_attempt_at = claim_at
-            row.updated_at = now
-            ids.append(row.id)
-    return ids
+        return [str(row[0]) for row in rows]
 
 
 def process_job(job_id: str) -> None:
@@ -568,7 +580,15 @@ def process_job(job_id: str) -> None:
         error="" if ok else last_error,
     )
     if ok:
-        logger.info("webhook ok event=%s attempt=%s url=%s", event_id, attempts, url)
+        logger.info(
+            "webhook ok",
+            extra=log_extra(
+                event_id=event_id,
+                attempt=attempts,
+                webhook_url=url,
+                http_status=http_status,
+            ),
+        )
         meta = payload.get(CLIP_META_KEY) if isinstance(payload.get(CLIP_META_KEY), dict) else {}
         path = str((meta or {}).get("path") or "").strip()
         key = str((meta or {}).get("key") or "").strip()
@@ -577,23 +597,30 @@ def process_job(job_id: str) -> None:
             try:
                 Path(path).unlink(missing_ok=True)
             except OSError:
-                logger.warning("failed to remove local clip %s", path)
+                logger.warning(
+                    "failed to remove local clip",
+                    extra=log_extra(event_id=event_id, clip_path=path),
+                )
     elif final_status == "dead":
         log = logger.info if _non_retryable(last_error) else logger.error
         log(
-            "webhook dead event=%s attempts=%s url=%s error=%s",
-            event_id,
-            attempts,
-            url,
-            last_error,
+            "webhook dead",
+            extra=log_extra(
+                event_id=event_id,
+                attempt=attempts,
+                webhook_url=url,
+                error=last_error,
+            ),
         )
     else:
         logger.warning(
-            "webhook retry event=%s attempt=%s url=%s error=%s",
-            event_id,
-            attempts,
-            url,
-            last_error,
+            "webhook retry",
+            extra=log_extra(
+                event_id=event_id,
+                attempt=attempts,
+                webhook_url=url,
+                error=last_error,
+            ),
         )
 
 

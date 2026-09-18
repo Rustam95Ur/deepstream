@@ -21,15 +21,13 @@ from app.api.users import router as users_router
 from app.api.webhooks import router as webhooks_router
 from app.billing import apply_runtime_lock, validate_billing_key
 from app.db import init_db
+from app.logging_config import bind_context, configure_logging, log_extra
 from app.minio_store import advertised_public_base
 from app.storage import get_store
 from app.web import SPA_DIR, router as web_router
 from app.webhooks import get_outbound_worker, seed_webhooks_from_settings
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+configure_logging(service="nexus-deepstream", role="api")
 logger = logging.getLogger("nexus_deepstream")
 
 _billing_stop = threading.Event()
@@ -42,9 +40,11 @@ def _billing_watch() -> None:
         try:
             check = apply_runtime_lock(validate_billing_key())
             logger.info(
-                "billing recheck valid=%s reason=%s",
-                check.valid,
-                check.reason or "-",
+                "billing recheck",
+                extra=log_extra(
+                    billing_valid=check.valid,
+                    reason=check.reason or "-",
+                ),
             )
         except Exception:
             logger.exception("billing recheck failed")
@@ -56,21 +56,25 @@ async def lifespan(_app: FastAPI):
     init_db()
     store = get_store()
     settings = store.get_settings()
+    bind_context(node_id=settings.node_id)
     seed_webhooks_from_settings(settings)
     logger.info(
-        "Nexus DeepStream API v%s node_id=%s data=%s campus_clips=%s",
-        __version__,
-        settings.node_id,
-        store.data_dir,
-        advertised_public_base(),
+        "Nexus DeepStream API started",
+        extra=log_extra(
+            version=__version__,
+            data_dir=str(store.data_dir),
+            campus_clips=advertised_public_base(),
+        ),
     )
     check = apply_runtime_lock(validate_billing_key(settings))
     logger.info(
-        "billing check valid=%s reason=%s url=%s serial=%s",
-        check.valid,
-        check.reason or "-",
-        check.url,
-        check.motherboard_serial or "-",
+        "billing check",
+        extra=log_extra(
+            billing_valid=check.valid,
+            reason=check.reason or "-",
+            billing_url=check.url,
+            motherboard_serial=check.motherboard_serial or "-",
+        ),
     )
     _billing_stop.clear()
     _billing_thread = threading.Thread(

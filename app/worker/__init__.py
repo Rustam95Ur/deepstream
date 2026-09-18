@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from app.ds.config import app_config_from_settings
 from app.ds.log_buffer import snapshot as log_snapshot
 from app.ds.sink_factory import build_sink
+from app.logging_config import bind_context, log_extra
 from app.pipeline_status import as_log_lines
 from app.schemas import WorkerStatusOut
 from app.storage import Store, get_bootstrap, get_store
@@ -104,13 +105,17 @@ class PipelineManager:
         while not self._stop.is_set():
             self.store.invalidate_camera_cache()
             settings = self.store.get_settings()
+            bind_context(node_id=settings.node_id)
             cameras = [c for c in self.store.list_cameras() if c.enabled]
             ok, detail = pipeline_available()
             if not ok:
                 self._running = False
                 self._camera_ids = []
                 self._last_error = detail
-                logger.warning("Pipeline idle: %s", detail)
+                logger.warning(
+                    "Pipeline idle",
+                    extra=log_extra(reason=detail),
+                )
                 self._wait_or_reload(15.0)
                 continue
 
@@ -118,7 +123,10 @@ class PipelineManager:
                 self._running = False
                 self._camera_ids = []
                 self._last_error = "нет включённых камер"
-                logger.info("Pipeline idle: нет включённых камер")
+                logger.info(
+                    "Pipeline idle",
+                    extra=log_extra(reason="нет включённых камер"),
+                )
                 self._wait_or_reload(10.0)
                 continue
 
@@ -126,9 +134,11 @@ class PipelineManager:
                 dropped = cameras[settings.max_streams :]
                 cameras = cameras[: settings.max_streams]
                 logger.warning(
-                    "Truncated cameras to max_streams=%s; not in pipeline: %s",
-                    settings.max_streams,
-                    ", ".join(c.id for c in dropped),
+                    "Truncated cameras to max_streams",
+                    extra=log_extra(
+                        max_streams=settings.max_streams,
+                        dropped_camera_ids=",".join(c.id for c in dropped),
+                    ),
                 )
 
             self._camera_ids = [c.id for c in cameras]
@@ -144,10 +154,11 @@ class PipelineManager:
                 from app.ds.pipeline import run_pipeline
 
                 logger.info(
-                    "Starting pipeline node=%s cameras=%s max_batch=%s",
-                    settings.node_id,
-                    len(cameras),
-                    settings.max_streams,
+                    "Starting pipeline",
+                    extra=log_extra(
+                        camera_count=len(cameras),
+                        max_batch=settings.max_streams,
+                    ),
                 )
                 while not self._stop.is_set() and not self._reload_requested.is_set():
                     run_pipeline(
@@ -159,18 +170,27 @@ class PipelineManager:
                     )
                     if self._stop.is_set() or self._reload_requested.is_set():
                         logger.info(
-                            "Pipeline stopped for %s",
-                            "shutdown" if self._stop.is_set() else "reload",
+                            "Pipeline stopped",
+                            extra=log_extra(
+                                reason=(
+                                    "shutdown"
+                                    if self._stop.is_set()
+                                    else "reload"
+                                ),
+                            ),
                         )
                         break
                     logger.warning(
-                        "Pipeline returned; reconnect in %.0fs",
-                        cfg.pipeline.reconnect_s,
+                        "Pipeline returned; reconnect",
+                        extra=log_extra(reconnect_s=cfg.pipeline.reconnect_s),
                     )
                     self._wait_or_reload(max(1.0, cfg.pipeline.reconnect_s))
             except Exception as exc:
                 self._last_error = str(exc)
-                logger.exception("Pipeline crashed")
+                logger.exception(
+                    "Pipeline crashed",
+                    extra=log_extra(error_type=type(exc).__name__),
+                )
                 self._wait_or_reload(max(1.0, settings.reconnect_s))
             finally:
                 closer = getattr(sink, "close", None)

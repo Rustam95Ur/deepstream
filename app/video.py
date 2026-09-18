@@ -17,6 +17,7 @@ from app.ds.log_buffer import install as install_log_buffer
 from app.ds.log_buffer import snapshot as log_snapshot
 from app.ds.ring_buffer import get_ring_buffer
 from app.history import get_history_writer
+from app.logging_config import bind_context, configure_logging, log_extra
 from app.schemas import LogLineOut, RingCameraHealthOut, VideoHealthOut, WorkerStatusOut
 from app.minio_store import advertised_public_base
 from app.storage import get_store
@@ -24,10 +25,7 @@ from app.video_auth import require_video_token, video_token
 from app.webhooks import get_outbound_worker
 from app.worker import get_manager
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+configure_logging(service="nexus-deepstream", role="video")
 logger = logging.getLogger("nexus_deepstream.video")
 
 _watch_stop = threading.Event()
@@ -86,6 +84,10 @@ def _watch_config() -> None:
         except Exception:
             logger.exception("video: config watch failed")
             continue
+        try:
+            bind_context(node_id=get_store().get_settings().node_id)
+        except Exception:
+            pass
         if last is not None and fp != last:
             if not license_ok():
                 logger.warning("video: license invalid — stop pipeline + ring-buffer")
@@ -167,14 +169,16 @@ async def lifespan(_app: FastAPI):
     get_history_writer().start()
     get_outbound_worker().start()
     settings = get_store().get_settings()
+    bind_context(node_id=settings.node_id)
     check = apply_runtime_lock(validate_billing_key(settings))
     logger.info(
-        "Nexus DeepStream video node_id=%s auto_start=%s token=%s campus_clips=%s license=%s",
-        settings.node_id,
-        settings.auto_start_pipeline,
-        "on" if video_token() else "off",
-        advertised_public_base(),
-        "ok" if check.valid else (check.reason or "invalid"),
+        "Nexus DeepStream video started",
+        extra=log_extra(
+            auto_start=settings.auto_start_pipeline,
+            video_token="on" if video_token() else "off",
+            campus_clips=advertised_public_base(),
+            license="ok" if check.valid else (check.reason or "invalid"),
+        ),
     )
     if not check.valid:
         logger.warning("license lock — pipeline and ring-buffer not started")

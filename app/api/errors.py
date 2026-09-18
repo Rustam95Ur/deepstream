@@ -9,6 +9,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.logging_config import log_extra
+
 logger = logging.getLogger("nexus_deepstream")
 
 
@@ -53,6 +55,13 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("%s %s", request.method, request.url.path)
+        logger.exception(
+            "unhandled request error",
+            extra=log_extra(
+                http_method=request.method,
+                path=request.url.path,
+                error_type=type(exc).__name__,
+            ),
+        )
         text = str(exc).strip() or type(exc).__name__
         return JSONResponse(status_code=500, content={"detail": text})

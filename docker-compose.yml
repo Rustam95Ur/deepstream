@@ -86,6 +86,7 @@ services:
       NEXUS_DS_HOST: "0.0.0.0"
       NEXUS_DS_PORT: "8080"
       NEXUS_DS_ROLE: api
+      NEXUS_DS_LOG_LEVEL: ${NEXUS_DS_LOG_LEVEL:-INFO}
       NEXUS_DS_DATA_DIR: /data/nexus_deepstream
       NEXUS_DS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus}@pgbouncer:5432/${POSTGRES_DB:-nexus_deepstream}
       NEXUS_DS_DATABASE_MIGRATE_URL: postgresql+psycopg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus}@postgres:5432/${POSTGRES_DB:-nexus_deepstream}
@@ -149,6 +150,7 @@ services:
       NEXUS_DS_VIDEO_HOST: "0.0.0.0"
       NEXUS_DS_VIDEO_PORT: "8081"
       NEXUS_DS_VIDEO_TOKEN: ${NEXUS_DS_VIDEO_TOKEN:-nexus-video-internal}
+      NEXUS_DS_LOG_LEVEL: ${NEXUS_DS_LOG_LEVEL:-INFO}
       NEXUS_DS_DATA_DIR: /data/nexus_deepstream
       NEXUS_DS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus}@pgbouncer:5432/${POSTGRES_DB:-nexus_deepstream}
       NEXUS_DS_DB_POOL_SIZE: "10"

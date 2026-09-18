@@ -10,6 +10,7 @@ from typing import Any
 
 from app.ds.config import AppConfig, CameraConfig, TriggerConfig
 from app.ds.payload import build_payload
+from app.logging_config import log_extra
 
 logger = logging.getLogger(__name__)
 
@@ -411,12 +412,22 @@ class TriggerEngine:
         )
         st.mark_fired(trigger_type, now)
         logger.warning(
-            "TRIGGER %s camera=%s evidence=%s",
-            trigger_type,
-            st.camera_id,
-            evidence,
+            "TRIGGER fired",
+            extra=log_extra(
+                trigger_type=trigger_type,
+                camera_id=st.camera_id,
+                event_id=payload.get("event_id"),
+                evidence=evidence,
+            ),
         )
         try:
             self.sink.send(payload)
         except Exception:
-            logger.exception("failed to send trigger")
+            logger.exception(
+                "failed to send trigger",
+                extra=log_extra(
+                    trigger_type=trigger_type,
+                    camera_id=st.camera_id,
+                    event_id=payload.get("event_id"),
+                ),
+            )
