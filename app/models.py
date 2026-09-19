@@ -87,6 +87,7 @@ class OutboundJobRow(Base):
             "created_at",
             postgresql_where=text("status IN ('pending', 'retrying')"),
         ),
+        Index("ix_outbound_jobs_status_updated", "status", "updated_at", "id"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -125,12 +126,17 @@ class LinkRow(Base):
 
 class TriggerEventRow(Base):
     __tablename__ = "trigger_events"
+    __table_args__ = (
+        Index("ix_trigger_events_type_created", "trigger_type", "created_at", "id"),
+        Index("ix_trigger_events_camera_created", "camera_id", "created_at", "id"),
+        Index("ix_trigger_events_category_created", "category", "created_at", "id"),
+    )
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
     )
     event_id: Mapped[str] = mapped_column(String(64), unique=True)
-    camera_id: Mapped[str] = mapped_column(String(128), default="", index=True)
+    camera_id: Mapped[str] = mapped_column(String(128), default="")
     trigger_type: Mapped[str] = mapped_column(String(64), default="")
     category: Mapped[str] = mapped_column(String(64), default="incident")
     evidence: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
@@ -142,6 +148,10 @@ class TriggerEventRow(Base):
 
 class SendEventRow(Base):
     __tablename__ = "send_events"
+    __table_args__ = (
+        Index("ix_send_events_status_created", "status", "created_at", "id"),
+        Index("ix_send_events_sink_created", "sink", "created_at", "id"),
+    )
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
