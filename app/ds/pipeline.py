@@ -391,38 +391,146 @@ def run_pipeline(
         .render(mode=RenderMode.DISCARD, enable_osd=False, sync=False)
     )
 
-    def _stop_pipeline(reason: str) -> None:
-        """Ask Flow/Pipeline to leave PLAYING. Safe to call repeatedly."""
-        for obj in (pipeline, flow):
-            for name in ("stop", "quit", "shutdown"):
-                fn = getattr(obj, name, None)
-                if not callable(fn):
-                    continue
-                try:
-                    fn()
-                except Exception:
-                    logger.exception(
-                        "%s.%s failed (%s)", type(obj).__name__, name, reason
-                    )
-        native = None
-        for attr in ("_pipeline", "pipeline", "gst_pipeline"):
-            candidate = getattr(pipeline, attr, None)
-            if candidate is not None and candidate is not pipeline:
-                native = candidate
-                break
-        if native is None:
-            return
+    stop_lock = threading.Lock()
+    stop_phase = {"n": 0}  # 0=idle, 1=soft, 2=hard
+
+    def _unwrap_gst(obj: Any) -> Any | None:
+        """Best-effort unwrap of service-maker Pipeline → Gst.Element."""
+        if obj is None:
+            return None
         try:
             from gi.repository import Gst  # type: ignore
 
-            send_event = getattr(native, "send_event", None)
-            set_state = getattr(native, "set_state", None)
-            if callable(send_event):
-                send_event(Gst.Event.new_eos())
-            if callable(set_state):
-                set_state(Gst.State.NULL)
+            if isinstance(obj, Gst.Element):
+                return obj
         except Exception:
-            logger.exception("native Gst stop failed (%s)", reason)
+            pass
+        for name in (
+            "_pipeline",
+            "pipeline",
+            "gst_pipeline",
+            "_gst_pipeline",
+            "native",
+            "_native",
+            "impl",
+            "_impl",
+        ):
+            try:
+                cand = getattr(obj, name, None)
+            except Exception:
+                continue
+            if cand is None or cand is obj:
+                continue
+            found = _unwrap_gst(cand)
+            if found is not None:
+                return found
+        try:
+            raw = getattr(obj, "__dict__", None)
+        except Exception:
+            raw = None
+        if isinstance(raw, dict):
+            for cand in raw.values():
+                if cand is None or cand is obj:
+                    continue
+                try:
+                    from gi.repository import Gst  # type: ignore
+
+                    if isinstance(cand, Gst.Element):
+                        return cand
+                except Exception:
+                    continue
+        return None
+
+    def _iter_gst_elements(root: Any):
+        from gi.repository import Gst  # type: ignore
+
+        if root is None:
+            return
+        yield root
+        iterate = getattr(root, "iterate_recurse", None)
+        if not callable(iterate):
+            return
+        try:
+            it = iterate()
+        except Exception:
+            return
+        while True:
+            try:
+                result, value = it.next()
+            except Exception:
+                break
+            if result == Gst.IteratorResult.OK:
+                yield value
+            elif result == Gst.IteratorResult.RESYNC:
+                try:
+                    it.resync()
+                except Exception:
+                    break
+            else:
+                break
+
+    def _allow_eos_end(native: Any) -> int:
+        """
+        Live RTSP uses drop-pipeline-eos=1 so EOS from Pipeline.stop() is
+        swallowed and Flow() never returns. Clear it before stop/EOS.
+        """
+        changed = 0
+        for elem in _iter_gst_elements(native):
+            try:
+                if elem.find_property("drop-pipeline-eos") is None:
+                    continue
+                elem.set_property("drop-pipeline-eos", False)
+                changed += 1
+            except Exception:
+                continue
+            # Stop endless RTSP reconnect while we tear down.
+            try:
+                if elem.find_property("rtsp-reconnect-attempts") is not None:
+                    elem.set_property("rtsp-reconnect-attempts", 0)
+            except Exception:
+                pass
+        return changed
+
+    def _set_null(native: Any) -> None:
+        from gi.repository import Gst  # type: ignore
+
+        try:
+            native.set_state(Gst.State.NULL)
+        except Exception:
+            logger.exception("Gst set_state(NULL) failed")
+        # Flush can unblock pads stuck in RTSP try_send.
+        try:
+            native.send_event(Gst.Event.new_flush_start())
+            native.send_event(Gst.Event.new_flush_stop(True))
+        except Exception:
+            pass
+
+    def _stop_pipeline(reason: str, *, hard: bool = False) -> None:
+        """Leave PLAYING. Soft: allow EOS + Pipeline.stop. Hard: force NULL."""
+        with stop_lock:
+            native = _unwrap_gst(pipeline) or _unwrap_gst(flow)
+            if native is not None:
+                n = _allow_eos_end(native)
+                if n:
+                    logger.info(
+                        "cleared drop-pipeline-eos on %s element(s) (%s)", n, reason
+                    )
+            # Service-maker stop posts EOS and quits the GLoop — only after
+            # drop-pipeline-eos is cleared, otherwise EOS is discarded forever.
+            for obj in (pipeline, flow):
+                for name in ("stop", "quit", "shutdown"):
+                    fn = getattr(obj, name, None)
+                    if not callable(fn):
+                        continue
+                    try:
+                        fn()
+                    except Exception:
+                        logger.exception(
+                            "%s.%s failed (%s)", type(obj).__name__, name, reason
+                        )
+            if hard and native is not None:
+                logger.warning("hard-stop pipeline (%s)", reason)
+                _set_null(native)
 
     def _eos_idle_watchdog():
         """If drop-pipeline-eos still leaves Flow hung, stop after frames go idle."""
@@ -433,7 +541,7 @@ def run_pipeline(
                 break
         while not stop.wait(0.5):
             if last_frame["n"] > 0 and (time.monotonic() - last_frame["t"]) >= idle_s:
-                _stop_pipeline(f"inbox idle {idle_s:.1f}s after last frame")
+                _stop_pipeline(f"inbox idle {idle_s:.1f}s after last frame", hard=True)
                 break
 
     eos_wd: threading.Thread | None = None
@@ -446,16 +554,47 @@ def run_pipeline(
     def _interrupt_watch() -> None:
         if interrupt is None:
             return
-        attempts = 0
+        # Wait until reload/stop is requested.
         while not stop.wait(0.4):
+            if interrupt.is_set():
+                break
+        if stop.is_set() or interrupt is None or not interrupt.is_set():
+            return
+        logger.info("reload requested — stopping live pipeline")
+        stop_phase["n"] = 1
+        _stop_pipeline("reload", hard=False)
+        # Soft stop often enough; escalate to NULL if Flow stays blocked.
+        soft_deadline = time.monotonic() + 3.0
+        hard_deadline = time.monotonic() + 12.0
+        exit_after = float(os.environ.get("DEEPSTREAM_RELOAD_EXIT_S", "45") or 45)
+        exit_deadline = time.monotonic() + max(20.0, exit_after)
+        last_hard_log = 0.0
+        while not stop.wait(1.0):
             if not interrupt.is_set():
-                continue
-            attempts += 1
-            if attempts == 1 or attempts % 15 == 0:
-                logger.info(
-                    "reload requested — stopping live pipeline (attempt %s)", attempts
+                return
+            now = time.monotonic()
+            if now >= exit_deadline:
+                logger.error(
+                    "Flow hung after reload stop — exiting video process "
+                    "(docker will restart with updated cameras)"
                 )
-            _stop_pipeline("reload")
+                os._exit(75)
+            if now >= hard_deadline:
+                if stop_phase["n"] < 2:
+                    stop_phase["n"] = 2
+                    _stop_pipeline("reload-hard", hard=True)
+                    last_hard_log = now
+                elif now - last_hard_log >= 10.0:
+                    last_hard_log = now
+                    logger.error(
+                        "pipeline still blocked after hard stop — "
+                        "waiting for Flow() to return (exit in %.0fs)",
+                        max(0.0, exit_deadline - now),
+                    )
+                continue
+            if now >= soft_deadline:
+                _stop_pipeline("reload-retry", hard=False)
+                soft_deadline = now + 2.0
 
     if interrupt is not None:
         threading.Thread(
