@@ -295,7 +295,7 @@ def run_pipeline(
 ) -> None:
     from pyservicemaker import Flow, Pipeline, RenderMode
 
-    engine = TriggerEngine(app_cfg, cameras, sink)
+    engine = TriggerEngine(app_cfg, cameras, sink, halt=interrupt)
 
     stop = threading.Event()
     last_frame = {"t": 0.0, "n": 0}
@@ -305,8 +305,15 @@ def run_pipeline(
             return
         # Grace for TensorRT engine build + RTSP connect before stream_silent.
         grace = max(90.0, app_cfg.pipeline.stream_silent_s * 2)
-        time.sleep(grace)
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            if stop.wait(0.5):
+                return
+            if interrupt is not None and interrupt.is_set():
+                return
         while not stop.wait(5.0):
+            if interrupt is not None and interrupt.is_set():
+                return
             try:
                 engine.check_stream_silent()
             except Exception:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
@@ -17,7 +19,9 @@ from app.schemas import (
     CameraTestBatchOut,
 )
 from app.storage import Store, get_store
-from app.video_client import notify_reload
+from app.video_client import notify_reload, worker_status
+
+logger = logging.getLogger(__name__)
 
 _TEST_META = {
     "test": True,
@@ -196,7 +200,10 @@ def patch_camera(camera_id: str, body: CameraPatch) -> CameraOut:
     cam = get_store().patch_camera(camera_id, patch)
     if not cam:
         raise HTTPException(status_code=404, detail="Camera not found")
-    notify_reload()
+    if "enabled" in patch and not cam.enabled:
+        _reload_pipeline_drop_camera(camera_id)
+    else:
+        notify_reload()
     return cam
 
 
@@ -204,4 +211,36 @@ def patch_camera(camera_id: str, body: CameraPatch) -> CameraOut:
 def delete_camera(camera_id: str) -> None:
     if not get_store().delete_camera(camera_id):
         raise HTTPException(status_code=404, detail="Camera not found")
-    notify_reload()
+    _reload_pipeline_drop_camera(camera_id)
+
+
+def _reload_pipeline_drop_camera(camera_id: str) -> None:
+    """Reload video worker and wait until ``camera_id`` leaves the live set."""
+    status = notify_reload()
+    if status is None:
+        logger.warning(
+            "camera %s removed from DB, but video reload failed "
+            "(check NEXUS_DS_VIDEO_URL) — old source may linger until config watch",
+            camera_id,
+        )
+        return
+    st = status
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline:
+        st = worker_status()
+        ids = set(st.camera_ids or [])
+        if camera_id not in ids and not st.reload_pending:
+            logger.info(
+                "camera %s removed from pipeline (%s cams left)",
+                camera_id,
+                len(ids),
+            )
+            return
+        time.sleep(0.4)
+    logger.warning(
+        "camera %s removed from DB; pipeline still reloading after 15s "
+        "(camera_ids=%s reload_pending=%s)",
+        camera_id,
+        list(st.camera_ids or []),
+        st.reload_pending,
+    )

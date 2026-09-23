@@ -98,14 +98,22 @@ class TriggerEngine:
         app_cfg: AppConfig,
         cameras: list[CameraConfig],
         sink: Any,
+        *,
+        halt: Any | None = None,
     ) -> None:
         self.app_cfg = app_cfg
         self.trigger: TriggerConfig = app_cfg.trigger
         self.sink = sink
+        # When set (pipeline reload/stop), do not fire — old pads must go quiet.
+        self._halt = halt
         self._cams = {c.camera_id: c for c in cameras}
         self.by_pad: dict[int, CameraTriggerState] = {}
         for idx, cam in enumerate(cameras):
             self.by_pad[idx] = CameraTriggerState(camera_id=cam.camera_id)
+
+    def _halted(self) -> bool:
+        halt = self._halt
+        return halt is not None and bool(getattr(halt, "is_set", lambda: False)())
 
     def _allows(self, camera_id: str, kind: str) -> bool:
         cam = self._cams.get(camera_id)
@@ -128,6 +136,8 @@ class TriggerEngine:
                 st.last_video_s = float(video_s)
 
     def check_stream_silent(self) -> None:
+        if self._halted():
+            return
         now = time.monotonic()
         silent_s = float(
             self._t(
@@ -140,6 +150,8 @@ class TriggerEngine:
             self._t("stream_silent", "cooldown_s", self.trigger.cooldown_s)
         )
         for st in self.by_pad.values():
+            if self._halted():
+                return
             if not self._allows(st.camera_id, "stream_silent"):
                 continue
             if not st.saw_frame:
@@ -157,6 +169,8 @@ class TriggerEngine:
             st.last_frame_ts = now
 
     def process_detections(self, pad_index: int, detections: list[Detection]) -> None:
+        if self._halted():
+            return
         st = self.by_pad.get(pad_index)
         if not st:
             return
@@ -395,6 +409,8 @@ class TriggerEngine:
         evidence: dict[str, Any],
         category: str = "incident",
     ) -> None:
+        if self._halted():
+            return
         now = time.monotonic()
         cam = self._cams.get(st.camera_id)
         payload = build_payload(

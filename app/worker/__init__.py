@@ -71,6 +71,18 @@ class PipelineManager:
         return "запускается…"
 
     def request_reload(self) -> None:
+        """Ask the live pipeline to stop; next loop iteration loads cameras from DB."""
+        try:
+            self.store.invalidate_camera_cache()
+            settings = self.store.get_settings()
+            cameras = [c for c in self.store.list_cameras() if c.enabled]
+            if len(cameras) > settings.max_streams:
+                cameras = cameras[: settings.max_streams]
+            # Reflect desired set immediately so status / callers see the drop
+            # while Flow is still tearing down.
+            self._camera_ids = [c.id for c in cameras]
+        except Exception:
+            logger.exception("reload: failed to refresh camera_ids from store")
         self._reload_requested.set()
 
     def start(self) -> WorkerStatusOut:
