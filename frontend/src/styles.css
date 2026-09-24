@@ -751,6 +751,77 @@ span.flatpickr-weekday {
 .algo-cell .lede { margin: 0; }
 .form-actions { display: flex; justify-content: flex-end; }
 
+.docs-layout {
+  display: grid;
+  grid-template-columns: 11.5rem 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+.docs-nav {
+  position: sticky;
+  top: calc(var(--header) + 0.75rem);
+  display: grid;
+  gap: 0.15rem;
+}
+.docs-layout section { scroll-margin-top: calc(var(--header) + 0.75rem); }
+.docs-nav a {
+  display: block;
+  padding: 0.4rem 0.65rem;
+  border-radius: var(--radius-sm);
+  color: var(--gray-700);
+  font-weight: 600;
+  text-decoration: none;
+}
+.docs-nav a:hover,
+.docs-nav a:focus-visible {
+  background: var(--primary-light);
+  color: var(--primary);
+  outline: none;
+}
+.docs-layout .card-body p { margin: 0 0 0.75rem; color: var(--gray-700); }
+.docs-layout .card-body p:last-child { margin-bottom: 0; }
+.docs-note { margin-top: 1rem; }
+.docs-steps,
+.docs-check {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.85rem;
+}
+.docs-steps li {
+  display: grid;
+  grid-template-columns: 1.75rem 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+.docs-steps i {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-style: normal;
+  font-weight: 700;
+}
+.docs-steps b { display: block; color: var(--text); }
+.docs-steps p { margin: 0.15rem 0 0; }
+.docs-check { counter-reset: docs; }
+.docs-check li {
+  counter-increment: docs;
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--primary);
+  color: var(--text);
+}
+.docs-check li::before {
+  content: counter(docs) ". ";
+  color: var(--primary);
+  font-weight: 700;
+}
+.docs-layout table td { vertical-align: top; }
+
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td {
@@ -880,6 +951,8 @@ td.uri { word-break: break-all; color: var(--muted); max-width: 320px; }
   .filters-row .date-range-field,
   .form-grid .date-range-field { grid-column: 1 / -1; }
   .trigger-row { grid-template-columns: 1fr; }
+  .docs-layout { grid-template-columns: 1fr; }
+  .docs-nav { position: static; }
   .switch-cell { margin-top: 0.25rem; }
   .auth-page { grid-template-columns: 1fr; }
   .auth-aside { min-height: 220px; padding: 2rem 1.5rem; }

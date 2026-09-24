@@ -22,6 +22,7 @@ const titles: Record<string, { title: string; desc: string }> = {
   users: { title: "Пользователи", desc: "Доступ в консоль по email" },
   "user-new": { title: "Новый пользователь", desc: "Email и пароль для входа" },
   "user-edit": { title: "Изменить пользователя", desc: "Email, имя и пароль" },
+  guide: { title: "Справка", desc: "Как устроена нода и что проверять" },
 };
 
 const page = computed(() => titles[String(route.name)] || titles.overview);
@@ -38,6 +39,7 @@ const nav = [
   { name: "triggers", label: "Сценарии", icon: "bolt" },
   { name: "history", label: "История", icon: "history" },
   { name: "users", label: "Пользователи", icon: "user" },
+  { name: "guide", label: "Справка", icon: "book" },
 ] as const;
 
 onMounted(async () => {
@@ -74,9 +76,13 @@ async function logout() {
   await router.push({ name: "login" });
 }
 
+function unlocked(name: string) {
+  return name === "settings" || name === "guide";
+}
+
 function go(name: string) {
   mobileOpen.value = false;
-  if (licenseLocked.value && name !== "settings") {
+  if (licenseLocked.value && !unlocked(name)) {
     router.push({ name: "settings" });
     return;
   }
@@ -148,8 +154,8 @@ async function onStop() {
           :key="item.name"
           type="button"
           class="service-tile"
-          :class="{ active: isNavActive(item.name), locked: licenseLocked && item.name !== 'settings' }"
-          :disabled="licenseLocked && item.name !== 'settings'"
+          :class="{ active: isNavActive(item.name), locked: licenseLocked && !unlocked(item.name) }"
+          :disabled="licenseLocked && !unlocked(item.name)"
           @click="go(item.name)"
         >
           <span class="tile-icon" aria-hidden="true">
@@ -175,6 +181,10 @@ async function onStop() {
             <svg v-else-if="item.icon === 'history'" width="26" height="26" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6"/>
               <path d="M12 8v4.5l3 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <svg v-else-if="item.icon === 'book'" width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v16H7.5A2.5 2.5 0 0 0 5 21.5V5.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+              <path d="M5 19.2A2.5 2.5 0 0 1 7.5 17H19" stroke="currentColor" stroke-width="1.6"/>
             </svg>
             <svg v-else width="26" height="26" viewBox="0 0 24 24" fill="none">
               <path d="M13 3 5 14h7l-1 7 8-11h-7l1-7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>

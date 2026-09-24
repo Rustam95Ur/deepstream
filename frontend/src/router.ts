@@ -11,6 +11,7 @@ import OverviewView from "./views/OverviewView.vue";
 import TriggersView from "./views/TriggersView.vue";
 import UsersView from "./views/UsersView.vue";
 import UserFormView from "./views/UserFormView.vue";
+import DocsView from "./views/DocsView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -33,6 +34,7 @@ export const router = createRouter({
         { path: "users", name: "users", component: UsersView },
         { path: "users/new", name: "user-new", component: UserFormView },
         { path: "users/:id", name: "user-edit", component: UserFormView },
+        { path: "guide", name: "guide", component: DocsView },
       ],
     },
   ],
@@ -44,7 +46,13 @@ router.beforeEach(async (to) => {
     if (to.matched.some((record) => record.meta.auth) && !session.authenticated) {
       return { name: "login" };
     }
-    if (session.authenticated && !session.license_valid && to.name !== "settings" && to.name !== "login") {
+    if (
+      session.authenticated &&
+      !session.license_valid &&
+      to.name !== "settings" &&
+      to.name !== "guide" &&
+      to.name !== "login"
+    ) {
       return { name: "settings" };
     }
     if (to.name === "login" && session.authenticated) {
