@@ -132,6 +132,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # GPU DeepStream + ring-buffer process.
+  # Compose service name is ``pipeline``; role/env is ``video``
+  # (NEXUS_DS_ROLE=video, container nexus-deepstream-video).
+  # API talks to it at NEXUS_DS_VIDEO_URL=http://pipeline:8081.
   pipeline:
     build:
       context: .

@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
-from datetime import datetime, timezone
 from queue import Empty, Full, Queue
 from typing import Any, Literal
 from uuid import uuid4
@@ -16,19 +14,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db import db_enabled, session_scope
 from app.ds.payload import normalize_payload
 from app.models import SendEventRow, TriggerEventRow
+from app.runtime_env import get_runtime_env
+from app.timeutil import utcnow
 
 logger = logging.getLogger(__name__)
 
 Kind = Literal["trigger", "send"]
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = (os.environ.get(name) or "").strip()
-    return int(raw) if raw else default
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _history_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -37,14 +28,15 @@ def _history_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 class HistoryWriter:
     def __init__(self) -> None:
+        rt = get_runtime_env()
         self._queue: Queue[tuple[Kind, dict[str, Any]]] = Queue(
-            maxsize=_env_int("NEXUS_DS_HISTORY_QUEUE", 20000)
+            maxsize=rt.history_queue
         )
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._dropped = 0
-        self._batch = _env_int("NEXUS_DS_HISTORY_BATCH", 200)
-        self._flush_s = max(50, _env_int("NEXUS_DS_HISTORY_FLUSH_MS", 200)) / 1000.0
+        self._batch = rt.history_batch
+        self._flush_s = max(50, rt.history_flush_ms) / 1000.0
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -129,7 +121,7 @@ def record_trigger(payload: dict[str, Any]) -> None:
         "trigger",
         {
             "id": str(uuid4()),
-            "created_at": _utcnow(),
+            "created_at": utcnow(),
             "event_id": str(payload.get("event_id") or ""),
             "camera_id": str(payload.get("camera_id") or ""),
             "trigger_type": str(payload.get("trigger_type") or ""),
@@ -155,7 +147,7 @@ def record_send(
         "send",
         {
             "id": str(uuid4()),
-            "created_at": _utcnow(),
+            "created_at": utcnow(),
             "event_id": event_id,
             "sink": sink,
             "url": url,

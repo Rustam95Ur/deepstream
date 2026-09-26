@@ -1,8 +1,8 @@
-"""Postgres tables: users, cameras, links, trigger/send history."""
+"""Postgres tables: users, cameras, webhooks, trigger/send history."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
@@ -10,9 +10,7 @@ from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, t
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from app.timeutil import utcnow
 
 
 class Base(DeclarativeBase):
@@ -29,10 +27,10 @@ class UserRow(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
+        DateTime(timezone=True), default=utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
+        DateTime(timezone=True), default=utcnow
     )
 
 
@@ -49,10 +47,10 @@ class CameraRow(Base):
         JSONB, nullable=True, default=None
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
+        DateTime(timezone=True), default=utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
+        DateTime(timezone=True), default=utcnow
     )
 
 
@@ -65,16 +63,15 @@ class WebhookRow(Base):
     name: Mapped[str] = mapped_column(String(128), default="")
     url: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    hmac_secret: Mapped[str] = mapped_column(Text, default="")
     login: Mapped[str] = mapped_column(String(128), default="")
     password_hash: Mapped[str] = mapped_column(Text, default="")
     timeout_sec: Mapped[float] = mapped_column(Float, default=5.0)
     max_retries: Mapped[int] = mapped_column(Integer, default=5)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
+        DateTime(timezone=True), default=utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
+        DateTime(timezone=True), default=utcnow
     )
 
 
@@ -103,24 +100,13 @@ class OutboundJobRow(Base):
     last_error: Mapped[str] = mapped_column(Text, default="")
     http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
     next_attempt_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
+        DateTime(timezone=True), default=utcnow
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
+        DateTime(timezone=True), default=utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
-    )
-
-
-class LinkRow(Base):
-    __tablename__ = "links"
-
-    kind: Mapped[str] = mapped_column(String(64), primary_key=True)
-    url: Mapped[str] = mapped_column(Text, default="")
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
+        DateTime(timezone=True), default=utcnow
     )
 
 
@@ -142,7 +128,7 @@ class TriggerEventRow(Base):
     evidence: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, index=True
+        DateTime(timezone=True), default=utcnow, index=True
     )
 
 
@@ -163,5 +149,5 @@ class SendEventRow(Base):
     http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, index=True
+        DateTime(timezone=True), default=utcnow, index=True
     )

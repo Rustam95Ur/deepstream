@@ -1,13 +1,12 @@
-"""Settings JSON + cameras/links in Postgres. Camera list is cached for the pipeline."""
+"""Settings JSON + cameras in Postgres. Camera list is cached for the pipeline."""
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -15,23 +14,19 @@ from uuid import uuid4
 from sqlalchemy import or_, select, tuple_
 
 from app.db import session_scope
-from app.models import CameraRow, LinkRow
+from app.models import CameraRow
 from app.paging import encode_cursor
+from app.runtime_env import get_runtime_env
 from app.schemas import CameraIn, CameraOut
 from app.settings import EnvBootstrap, NodeSettings, load_env_bootstrap
+from app.timeutil import utcnow
 from app.trigger_types import camera_trigger_override
 
 logger = logging.getLogger(__name__)
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def _cache_ttl_s() -> float:
-    raw = (os.environ.get("NEXUS_DS_CAMERA_CACHE_MS") or "").strip()
-    ms = int(raw) if raw else 2000
-    return max(0, ms) / 1000.0
+    return max(0, get_runtime_env().camera_cache_ms) / 1000.0
 
 
 def _camera_out(row: CameraRow) -> CameraOut:
@@ -59,7 +54,6 @@ class Store:
         self._settings = self._load_settings()
         self._cameras: list[CameraOut] | None = None
         self._cameras_at = 0.0
-        self._sync_links(self._settings)
 
     def _file_mtime(self) -> float:
         try:
@@ -94,31 +88,6 @@ class Store:
         self._cameras = None
         self._cameras_at = 0.0
 
-    def _sync_links(self, settings: NodeSettings) -> None:
-        values = {
-            "triggers_url": settings.triggers_url,
-        }
-        now = _utcnow()
-        try:
-            with session_scope(write=True) as session:
-                for kind, url in values.items():
-                    row = session.get(LinkRow, kind)
-                    if row is None:
-                        session.add(
-                            LinkRow(
-                                kind=kind,
-                                url=url or "",
-                                enabled=bool((url or "").strip()),
-                                updated_at=now,
-                            )
-                        )
-                    else:
-                        row.url = url or ""
-                        row.enabled = bool((url or "").strip())
-                        row.updated_at = now
-        except Exception:
-            logger.exception("failed to sync links")
-
     def invalidate_camera_cache(self) -> None:
         with self._lock:
             self._invalidate_cameras()
@@ -137,7 +106,6 @@ class Store:
             self._settings = NodeSettings.model_validate(data)
             self._persist_settings()
             self._settings_mtime = self._file_mtime()
-            self._sync_links(self._settings)
             return self._settings.model_copy(deep=True)
 
     def list_cameras(self) -> list[CameraOut]:
@@ -241,7 +209,7 @@ class Store:
         return cam
 
     def upsert_many(self, cameras: list[CameraIn]) -> tuple[list[CameraOut], int, int]:
-        now = _utcnow()
+        now = utcnow()
         unique: dict[str, CameraIn] = {}
         for cam in cameras:
             cam_id = (cam.id or "").strip()

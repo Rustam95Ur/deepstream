@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.runtime_env import get_runtime_env
 from app.trigger_thresholds import merge_trigger_thresholds, sync_flat_from_profiles
 from app.trigger_types import DEFAULT_ENABLED_TRIGGERS, normalize_enabled_triggers
 
@@ -14,10 +14,7 @@ DEFAULT_BILLING_VALIDATE_URL = "http://localhost/api/v1/public/keys/validate"
 
 
 def _default_data_dir() -> Path:
-    raw = (os.environ.get("NEXUS_DS_DATA_DIR") or "").strip()
-    if raw:
-        return Path(raw)
-    return Path(__file__).resolve().parent.parent / "data"
+    return get_runtime_env().data_dir
 
 
 class NodeSettings(BaseModel):
@@ -26,10 +23,11 @@ class NodeSettings(BaseModel):
     node_id: str = Field(default="ds-1", min_length=1, max_length=64)
     node_name: str = Field(default="DeepStream Node 1", max_length=128)
 
-    # Where to POST triggers (primary for multi-node product)
+    # Seed-only: used once to create the first webhook when the table is empty.
+    # Live outbound URLs come from the webhooks table / UI.
     triggers_url: str = Field(
         default="",
-        description="POST trigger payload (Campus / webhook)",
+        description="Seed webhook URL when webhooks table is empty (legacy)",
     )
     triggers_timeout_sec: float = Field(default=5.0, ge=1.0, le=120.0)
 
@@ -60,6 +58,8 @@ class NodeSettings(BaseModel):
     enabled_triggers: list[str] = Field(
         default_factory=lambda: list(DEFAULT_ENABLED_TRIGGERS)
     )
+    # Flat threshold mirrors — kept for API/settings.json compat.
+    # Source of truth is ``trigger_thresholds``; validator syncs both ways once.
     min_tracks: int = 2
     converge_dist_bh: float = 1.5
     speed_thresh_bh: float = 2.0
@@ -84,7 +84,7 @@ class NodeSettings(BaseModel):
     auto_start_pipeline: bool = True
     max_streams: int = Field(default=16, ge=1, le=128)
 
-    # Per trigger-type thresholds (presence / convergence / vif / stream_silent).
+    # Per trigger-type thresholds (canonical). Flat fields above are mirrors.
     trigger_thresholds: dict[str, dict[str, float | int]] = Field(default_factory=dict)
 
     @field_validator("enabled_triggers", mode="before")
@@ -102,30 +102,29 @@ class NodeSettings(BaseModel):
 
 
 class EnvBootstrap(BaseModel):
-    """Boot-time env (not edited in UI)."""
+    """Boot-time paths and listen address (subset of RuntimeEnv for Store/UI)."""
 
     host: str = "0.0.0.0"
     port: int = 8080
     data_dir: Path = Field(default_factory=_default_data_dir)
     yolo_dir: Path = Field(
-        default_factory=lambda: Path(
-            os.environ.get("DEEPSTREAM_YOLO_DIR")
-            or str(Path(__file__).resolve().parent.parent / "models" / "yolo11n")
-        )
+        default_factory=lambda: get_runtime_env().yolo_dir
     )
     work_dir: Path = Field(
-        default_factory=lambda: Path(
-            os.environ.get("DEEPSTREAM_WORK_DIR") or "/tmp/nexus_deepstream"
-        )
+        default_factory=lambda: get_runtime_env().work_dir
     )
     debug_dir: Path = Field(
-        default_factory=lambda: Path(
-            os.environ.get("DEEPSTREAM_DEBUG_DIR") or str(_default_data_dir() / "debug")
-        )
+        default_factory=lambda: get_runtime_env().debug_dir
     )
 
 
 def load_env_bootstrap() -> EnvBootstrap:
-    host = (os.environ.get("NEXUS_DS_HOST") or "0.0.0.0").strip()
-    port = int(os.environ.get("NEXUS_DS_PORT") or "8080")
-    return EnvBootstrap(host=host, port=port)
+    rt = get_runtime_env()
+    return EnvBootstrap(
+        host=rt.host,
+        port=rt.port,
+        data_dir=rt.data_dir,
+        yolo_dir=rt.yolo_dir,
+        work_dir=rt.work_dir,
+        debug_dir=rt.debug_dir,
+    )

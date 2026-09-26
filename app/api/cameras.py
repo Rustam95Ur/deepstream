@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import logging
-import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.api import CameraApiAuth, LicenseAuth
-from app.paging import cursor_id, cursor_or_400
 from app.schemas import (
     CameraIn,
     CameraListOut,
@@ -18,66 +15,13 @@ from app.schemas import (
     CameraTestBatchIn,
     CameraTestBatchOut,
 )
-from app.storage import Store, get_store
-from app.video_client import notify_reload, worker_status
-
-logger = logging.getLogger(__name__)
-
-_TEST_META = {
-    "test": True,
-    "stream_protocol": 2,
-    "resolution_width": 1280,
-    "resolution_height": 720,
-    "fps": 25,
-    "allow_preprocessing": False,
-    "usage_modules": [2],
-}
+from app.services import cameras as cameras_svc
 
 router = APIRouter(
     prefix="/api/v1/cameras",
     tags=["cameras"],
     dependencies=[CameraApiAuth, LicenseAuth],
 )
-
-
-def _aware(dt: datetime | None) -> datetime | None:
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def _with_id(store: Store, body: CameraIn, *, camera_id: str = "") -> CameraIn:
-    cam_id = (
-        camera_id or body.id or body.external_id or ""
-    ).strip() or store.new_camera_id()
-    return body.model_copy(update={"id": cam_id, "name": body.name or cam_id})
-
-
-def _guard_capacity(store: Store, new_ids: set[str]) -> None:
-    settings = store.get_settings()
-    existing = {c.id for c in store.list_cameras()}
-    if len(existing | new_ids) > settings.max_streams:
-        raise HTTPException(
-            status_code=400,
-            detail=f"max_streams={settings.max_streams} reached",
-        )
-
-
-def _alloc_test_ids(existing_ids: set[str], count: int) -> list[str]:
-    ids: list[str] = []
-    n = 1
-    while len(ids) < count:
-        cam_id = f"test_{n}"
-        if cam_id not in existing_ids:
-            ids.append(cam_id)
-        n += 1
-        if n > 10_000:
-            raise HTTPException(
-                status_code=400, detail="cannot allocate test camera ids"
-            )
-    return ids
 
 
 @router.get("", response_model=CameraListOut)
@@ -89,39 +33,13 @@ def list_cameras(
     cursor: str = Query(default=""),
     limit: int | None = Query(default=None, ge=1, le=200),
 ) -> CameraListOut:
-    store = get_store()
-    settings = store.get_settings()
-    payload = cursor_or_400(cursor)
-    after_id = after_name = None
-    if payload is not None:
-        after_id = cursor_id(payload)
-        after_name = str(payload.get("k") or "") if "k" in payload else None
-    paginated = limit is not None or after_id is not None
-    page_size = (limit or 10) if paginated else None
-    filtered = (
-        bool(q.strip()) or enabled is not None or since is not None or until is not None
-    )
-    next_cursor = None
-    if paginated or filtered:
-        cams, next_cursor = store.search_cameras(
-            q=q,
-            enabled=enabled,
-            since=_aware(since),
-            until=_aware(until),
-            after_name=after_name,
-            after_id=after_id,
-            limit=page_size,
-        )
-    else:
-        cams = store.list_cameras()
-    updated = None
-    if cams:
-        updated = max(c.updated_at for c in cams)
-    return CameraListOut(
-        node_id=settings.node_id,
-        cameras=cams,
-        updated_at=updated,
-        next_cursor=next_cursor,
+    return cameras_svc.list_cameras(
+        q=q,
+        enabled=enabled,
+        since=since,
+        until=until,
+        cursor=cursor,
+        limit=limit,
     )
 
 
@@ -131,52 +49,17 @@ def list_cameras(
     status_code=status.HTTP_201_CREATED,
 )
 def create_test_cameras(body: CameraTestBatchIn) -> CameraTestBatchOut:
-    uri = body.main_uri.strip()
-    low = uri.lower()
-    if not (low.startswith("rtsp://") or low.startswith("file://")):
-        raise HTTPException(status_code=400, detail="нужна ссылка rtsp:// или file://")
-    store = get_store()
-    settings = store.get_settings()
-    existing = {c.id for c in store.list_cameras()}
-    free = settings.max_streams - len(existing)
-    if body.count > max(0, free):
-        raise HTTPException(
-            status_code=400,
-            detail=f"max_streams={settings.max_streams}, свободно слотов: {max(0, free)}",
-        )
-    ids = _alloc_test_ids(existing, body.count)
-    _guard_capacity(store, set(ids))
-    payloads = [
-        CameraIn(
-            id=cam_id,
-            name=f"Тест {cam_id.split('_', 1)[1]}",
-            main_uri=uri,
-            enabled=True,
-            meta=dict(_TEST_META),
-            enabled_triggers=None,
-        )
-        for cam_id in ids
-    ]
-    cams, created_n, _updated_n = store.upsert_many(payloads)
-    notify_reload()
-    return CameraTestBatchOut(cameras=cams, created=created_n)
+    return cameras_svc.create_test_batch(main_uri=body.main_uri, count=body.count)
 
 
 @router.get("/{camera_id}", response_model=CameraOut)
 def get_camera(camera_id: str) -> CameraOut:
-    cam = get_store().get_camera(camera_id)
-    if not cam:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    return cam
+    return cameras_svc.get_camera(camera_id)
 
 
 @router.post("", response_model=CameraOut)
 def create_or_upsert_camera(body: CameraIn, response: Response) -> CameraOut:
-    store = get_store()
-    payload = _with_id(store, body)
-    _guard_capacity(store, {payload.id})
-    cam, created = store.upsert_camera(payload)
-    notify_reload()
+    cam, created = cameras_svc.upsert_camera(body)
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return cam
 
@@ -185,62 +68,16 @@ def create_or_upsert_camera(body: CameraIn, response: Response) -> CameraOut:
 def upsert_camera(camera_id: str, body: CameraIn, response: Response) -> CameraOut:
     if body.id and body.id != camera_id:
         raise HTTPException(status_code=400, detail="id mismatch")
-    store = get_store()
-    payload = _with_id(store, body, camera_id=camera_id)
-    _guard_capacity(store, {payload.id})
-    cam, created = store.upsert_camera(payload)
-    notify_reload()
+    cam, created = cameras_svc.upsert_camera(body, camera_id=camera_id)
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return cam
 
 
 @router.patch("/{camera_id}", response_model=CameraOut)
 def patch_camera(camera_id: str, body: CameraPatch) -> CameraOut:
-    patch = body.model_dump(exclude_unset=True)
-    cam = get_store().patch_camera(camera_id, patch)
-    if not cam:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    if "enabled" in patch and not cam.enabled:
-        _reload_pipeline_drop_camera(camera_id)
-    else:
-        notify_reload()
-    return cam
+    return cameras_svc.patch_camera(camera_id, body)
 
 
 @router.delete("/{camera_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_camera(camera_id: str) -> None:
-    if not get_store().delete_camera(camera_id):
-        raise HTTPException(status_code=404, detail="Camera not found")
-    _reload_pipeline_drop_camera(camera_id)
-
-
-def _reload_pipeline_drop_camera(camera_id: str) -> None:
-    """Reload video worker and wait until ``camera_id`` leaves the live set."""
-    status = notify_reload()
-    if status is None:
-        logger.warning(
-            "camera %s removed from DB, but video reload failed "
-            "(check NEXUS_DS_VIDEO_URL) — old source may linger until config watch",
-            camera_id,
-        )
-        return
-    st = status
-    deadline = time.monotonic() + 15.0
-    while time.monotonic() < deadline:
-        st = worker_status()
-        ids = set(st.camera_ids or [])
-        if camera_id not in ids and not st.reload_pending:
-            logger.info(
-                "camera %s removed from pipeline (%s cams left)",
-                camera_id,
-                len(ids),
-            )
-            return
-        time.sleep(0.4)
-    logger.warning(
-        "camera %s removed from DB; pipeline still reloading after 15s "
-        "(camera_ids=%s reload_pending=%s)",
-        camera_id,
-        list(st.camera_ids or []),
-        st.reload_pending,
-    )
+    cameras_svc.delete_camera(camera_id)

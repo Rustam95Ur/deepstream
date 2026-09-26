@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import socket
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import urlparse, urlunparse
+
+from app.runtime_env import get_runtime_env
 
 logger = logging.getLogger(__name__)
 
@@ -23,32 +24,22 @@ LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 DOCKER_HOST_NAMES = {"host.docker.internal", "gateway.docker.internal"}
 
 
-def _env(name: str, default: str = "") -> str:
-    return (os.environ.get(name) or default).strip()
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = _env(name)
-    return int(raw) if raw else default
-
-
 def utc_offset_hours() -> int:
-    return _env_int("NEXUS_DS_UTC_OFFSET_HOURS", 5)
+    return get_runtime_env().utc_offset_hours
 
 
 class MinioConfig:
     def __init__(self) -> None:
-        self.endpoint_url = _env("NEXUS_DS_MINIO_ENDPOINT_URL")
-        self.access_key = _env("NEXUS_DS_MINIO_ACCESS_KEY")
-        self.secret_key = _env("NEXUS_DS_MINIO_SECRET_KEY")
-        self.region = _env("NEXUS_DS_MINIO_REGION", DEFAULT_REGION) or DEFAULT_REGION
-        self.bucket = _env("NEXUS_DS_MINIO_BUCKET", DEFAULT_BUCKET) or DEFAULT_BUCKET
-        prefix = _env("NEXUS_DS_MINIO_KEY_PREFIX", DEFAULT_PREFIX) or DEFAULT_PREFIX
+        rt = get_runtime_env()
+        self.endpoint_url = rt.minio_endpoint_url
+        self.access_key = rt.minio_access_key
+        self.secret_key = rt.minio_secret_key
+        self.region = rt.minio_region or DEFAULT_REGION
+        self.bucket = rt.minio_bucket or DEFAULT_BUCKET
+        prefix = rt.minio_key_prefix or DEFAULT_PREFIX
         self.key_prefix = prefix.strip("/") + "/"
-        self.public_url = _env("NEXUS_DS_MINIO_PUBLIC_URL").rstrip("/")
-        self.presign_expire_s = max(
-            60, _env_int("NEXUS_DS_MINIO_PRESIGN_EXPIRE_S", DEFAULT_PRESIGN_EXPIRE_S)
-        )
+        self.public_url = rt.minio_public_url
+        self.presign_expire_s = max(60, rt.minio_presign_expire_s)
 
     @property
     def enabled(self) -> bool:
@@ -121,10 +112,9 @@ def advertised_public_base() -> str:
     Linux container and those names point at Campus itself or do not resolve.
     """
     global _advertised_base_warned
-    port = (
-        _env("NEXUS_DS_ADVERTISE_PORT") or _env("NEXUS_DS_PORT") or DEFAULT_PUBLIC_PORT
-    )
-    raw = _env("NEXUS_DS_PUBLIC_URL").rstrip("/")
+    rt = get_runtime_env()
+    port = rt.advertise_port or str(rt.port) or DEFAULT_PUBLIC_PORT
+    raw = rt.public_url
     parsed = urlparse(raw) if raw else urlparse("")
     host = (parsed.hostname or "").strip()
     if raw and not _host_unreachable_from_campus(host):
@@ -150,10 +140,10 @@ def advertised_public_base() -> str:
 
 
 def campus_clip_url(event_id: str) -> str:
-    eid = (event_id or "").strip().removesuffix(".mp4")
-    if not eid:
-        return ""
-    return f"{advertised_public_base()}/api/v1/public/clips/{eid}.mp4"
+    """Deprecated alias — use ``app.campus.urls.public_clip_url``."""
+    from app.campus.urls import public_clip_url
+
+    return public_clip_url(event_id)
 
 
 def build_incident_object_key(

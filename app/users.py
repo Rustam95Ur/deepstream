@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import func, or_, select, tuple_
@@ -12,11 +12,8 @@ from sqlalchemy.exc import IntegrityError
 from app.db import session_scope
 from app.models import UserRow
 from app.paging import encode_cursor
+from app.timeutil import utcnow
 from app.web.passwords import hash_password
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def normalize_email(email: str) -> str:
@@ -108,7 +105,7 @@ def list_users(
 
 def create_user(email: str, password: str, name: str = "") -> UserRecord:
     email = normalize_email(email)
-    now = _utcnow()
+    now = utcnow()
     row = UserRow(
         id=str(uuid4()),
         email=email,
@@ -139,7 +136,7 @@ def update_user(
     user_id: str, *, email: str, name: str, password: str = ""
 ) -> UserRecord | None:
     email = normalize_email(email)
-    now = _utcnow()
+    now = utcnow()
     try:
         with session_scope(write=True) as session:
             row = session.get(UserRow, user_id)

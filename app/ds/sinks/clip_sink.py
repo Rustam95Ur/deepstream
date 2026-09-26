@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from app.campus.urls import public_clip_url
 from app.ds.clip import build_clip_from_payload
 from app.ds.config import CameraConfig
 from app.ds.payload import (
@@ -15,7 +16,7 @@ from app.ds.payload import (
     normalize_payload,
     requires_video,
 )
-from app.minio_store import build_incident_object_key, campus_clip_url, get_minio_store
+from app.minio_store import build_incident_object_key, get_minio_store
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ class IncidentClipSink:
         local_path = str(path)
         key = ""
         bucket = ""
-        url = campus_clip_url(event_id)
+        url = public_clip_url(event_id)
 
         if store.enabled:
             key = build_incident_object_key(

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import os
-
 from fastapi import HTTPException, Request, status
+
+from app.runtime_env import get_runtime_env
 
 
 def video_token() -> str:
-    return (os.environ.get("NEXUS_DS_VIDEO_TOKEN") or "").strip()
+    return get_runtime_env().video_token
 
 
 def require_video_token(request: Request) -> None:

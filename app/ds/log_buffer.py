@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from datetime import datetime, timezone
 from typing import Any
+
+from app.timeutil import utcnow
 
 _MAX = 80
 _lock = threading.Lock()
@@ -14,16 +15,12 @@ _lines: deque[dict[str, Any]] = deque(maxlen=_MAX)
 _handler: logging.Handler | None = None
 
 
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def note(message: str, *, level: str = "WARNING", logger_name: str = "app") -> None:
     text = (message or "").strip()
     if not text:
         return
     row = {
-        "ts": _utcnow(),
+        "ts": utcnow(),
         "level": (level or "WARNING").upper(),
         "logger": logger_name,
         "message": text[:800],

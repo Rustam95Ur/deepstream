@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import urllib.error
 import urllib.request
 from datetime import datetime
 from typing import Any
 
 from app.pipeline_status import as_log_lines
+from app.runtime_env import get_runtime_env
 from app.schemas import (
     CameraSkipOut,
     LogLineOut,
@@ -18,16 +18,13 @@ from app.schemas import (
     VideoHealthOut,
     WorkerStatusOut,
 )
+from app.video_auth import video_token
 
 logger = logging.getLogger(__name__)
 
 
 def video_base_url() -> str:
-    return (os.environ.get("NEXUS_DS_VIDEO_URL") or "").strip().rstrip("/")
-
-
-def video_token() -> str:
-    return (os.environ.get("NEXUS_DS_VIDEO_TOKEN") or "").strip()
+    return get_runtime_env().video_url
 
 
 def video_configured() -> bool:

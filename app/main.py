@@ -21,6 +21,7 @@ from app.api.users import router as users_router
 from app.api.webhooks import router as webhooks_router
 from app.billing import apply_runtime_lock, validate_billing_key
 from app.db import init_db
+from app.history import get_history_writer
 from app.logging_config import bind_context, configure_logging, log_extra
 from app.minio_store import advertised_public_base
 from app.storage import get_store
@@ -81,12 +82,17 @@ async def lifespan(_app: FastAPI):
         target=_billing_watch, name="billing-recheck", daemon=True
     )
     _billing_thread.start()
+    # HistoryWriter + OutboundWorker also run on video. Dual outbound is
+    # intentional (SKIP LOCKED). HistoryWriter on API covers record_send from
+    # resend/enqueue without relying on the video process.
+    get_history_writer().start()
     get_outbound_worker().start()
     yield
     _billing_stop.set()
     if _billing_thread and _billing_thread.is_alive():
         _billing_thread.join(timeout=3.0)
     get_outbound_worker().stop()
+    get_history_writer().stop()
 
 
 app = FastAPI(

@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from queue import Empty, Full, Queue
 from typing import Any
 
+from app.runtime_env import get_runtime_env
+
 logger = logging.getLogger(__name__)
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = (os.environ.get(name) or "").strip()
-    return int(raw) if raw else default
 
 
 class AsyncSink:
@@ -23,12 +19,12 @@ class AsyncSink:
     def __init__(self, inner: Any) -> None:
         self.inner = inner
         self.source_video = getattr(inner, "source_video", None)
-        self._queue: Queue[dict[str, Any]] = Queue(
-            maxsize=_env_int("NEXUS_DS_SINK_QUEUE", 10000)
-        )
+        rt = get_runtime_env()
+        self._queue: Queue[dict[str, Any]] = Queue(maxsize=rt.sink_queue)
         self._stop = threading.Event()
         self._dropped = 0
-        n = max(1, _env_int("NEXUS_DS_SINK_WORKERS", 4))
+        self._close_s = float(rt.sink_close_s)
+        n = max(1, rt.sink_workers)
         self._threads = [
             threading.Thread(target=self._loop, name=f"sink-worker-{i}", daemon=True)
             for i in range(n)
@@ -47,9 +43,7 @@ class AsyncSink:
         return str(payload.get("event_id") or "") or None
 
     def close(self) -> None:
-        deadline = time.monotonic() + float(
-            os.environ.get("NEXUS_DS_SINK_CLOSE_S") or 120
-        )
+        deadline = time.monotonic() + self._close_s
         while not self._queue.empty() and time.monotonic() < deadline:
             time.sleep(0.2)
         self._stop.set()

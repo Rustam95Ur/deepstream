@@ -10,17 +10,10 @@ from typing import Any
 
 from app.ds.config import AppConfig, CameraConfig, TriggerConfig
 from app.ds.payload import build_payload
+from app.ds.static_filter import WARMUP_S, StickyBox, filter_live_people
 from app.logging_config import log_extra
 
 logger = logging.getLogger(__name__)
-
-# Life-size cutouts / wall decals sit still. After this age they are furniture.
-_STATIC_AGE_S = 5.0
-_STICKY_TTL_S = 20.0
-_STATIC_IOU = 0.4
-_MOVE_BH = 0.2
-# Do not fire person triggers until background boxes have been learned.
-_WARMUP_S = 8.0
 
 
 @dataclass(slots=True)
@@ -55,16 +48,6 @@ class Detection:
         dist = math.hypot(dx, dy)
         scale = (self.bh + other.bh) / 2.0
         return dist / scale
-
-
-@dataclass(slots=True)
-class StickyBox:
-    cx: float
-    cy: float
-    w: float
-    h: float
-    first_ts: float
-    last_ts: float
 
 
 @dataclass
@@ -180,7 +163,7 @@ class TriggerEngine:
         if st.warmup_from is None:
             st.warmup_from = now
         raw = [d for d in detections if d.h > 0 and d.w > 0]
-        warming = (now - st.warmup_from) < _WARMUP_S
+        warming = (now - st.warmup_from) < WARMUP_S
         people = self._live_people(st, raw, now, force_static=warming)
         if warming:
             return
@@ -201,58 +184,9 @@ class TriggerEngine:
         *,
         force_static: bool = False,
     ) -> list[Detection]:
-        """Drop boxes that have sat still (cutouts, posters, plants)."""
-        unused = list(range(len(st.sticky)))
-        live: list[Detection] = []
-        seeded_ts = now - _STATIC_AGE_S
-        for det in people:
-            best_i = -1
-            best_iou = 0.0
-            for i in unused:
-                box = st.sticky[i]
-                iou = det.iou(
-                    Detection(
-                        track_id=-1,
-                        cx=box.cx,
-                        cy=box.cy,
-                        w=box.w,
-                        h=box.h,
-                        conf=0.0,
-                    )
-                )
-                if iou > best_iou:
-                    best_iou = iou
-                    best_i = i
-            if best_i >= 0 and best_iou >= _STATIC_IOU:
-                box = st.sticky[best_i]
-                unused.remove(best_i)
-                dist = math.hypot(det.cx - box.cx, det.cy - box.cy)
-                moved = dist > _MOVE_BH * max(det.bh, box.h, 1.0)
-                box.last_ts = now
-                if moved:
-                    box.cx, box.cy, box.w, box.h = det.cx, det.cy, det.w, det.h
-                    box.first_ts = seeded_ts if force_static else now
-                    if not force_static:
-                        live.append(det)
-                elif force_static:
-                    box.first_ts = min(box.first_ts, seeded_ts)
-                elif (now - box.first_ts) < _STATIC_AGE_S:
-                    live.append(det)
-            else:
-                st.sticky.append(
-                    StickyBox(
-                        cx=det.cx,
-                        cy=det.cy,
-                        w=det.w,
-                        h=det.h,
-                        first_ts=seeded_ts if force_static else now,
-                        last_ts=now,
-                    )
-                )
-                if not force_static:
-                    live.append(det)
-        st.sticky = [b for b in st.sticky if (now - b.last_ts) < _STICKY_TTL_S]
-        return live
+        return filter_live_people(
+            st.sticky, people, now, force_static=force_static
+        )
 
     def _still_held(self, last_hit: float | None, now: float, hold_s: float) -> bool:
         return last_hit is not None and (now - last_hit) < hold_s

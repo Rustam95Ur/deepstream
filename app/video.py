@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -166,6 +165,7 @@ def video_health() -> VideoHealthOut:
 async def lifespan(_app: FastAPI):
     _wait_for_db()
     install_log_buffer()
+    # Dual OutboundWorker with API is intentional (FOR UPDATE SKIP LOCKED).
     get_history_writer().start()
     get_outbound_worker().start()
     settings = get_store().get_settings()
@@ -245,12 +245,13 @@ def get_video_health() -> VideoHealthOut:
 def main() -> None:
     import uvicorn
 
-    host = (os.environ.get("NEXUS_DS_VIDEO_HOST") or "0.0.0.0").strip()
-    port = int(os.environ.get("NEXUS_DS_VIDEO_PORT") or "8081")
+    from app.runtime_env import get_runtime_env
+
+    rt = get_runtime_env()
     uvicorn.run(
         "app.video:app",
-        host=host,
-        port=port,
+        host=rt.video_host,
+        port=rt.video_port,
         reload=False,
         workers=1,
         timeout_keep_alive=30,

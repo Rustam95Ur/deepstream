@@ -14,19 +14,14 @@ from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.runtime_env import get_runtime_env
+
 logger = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parent.parent
 _engine: Engine | None = None
 _migrate_engine: Engine | None = None
 _Session: sessionmaker[Session] | None = None
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = (os.environ.get(name) or "").strip()
-    if not raw:
-        return default
-    return int(raw)
 
 
 def database_url() -> str:
@@ -64,13 +59,14 @@ def _attach_session_gucs(engine: Engine, *, statement_timeout_ms: int) -> None:
 def _make_engine(
     url: str, *, pool_size: int, max_overflow: int, statement_timeout_ms: int
 ) -> Engine:
+    rt = get_runtime_env()
     engine = create_engine(
         url,
         pool_pre_ping=True,
         pool_size=pool_size,
         max_overflow=max_overflow,
-        pool_recycle=_env_int("NEXUS_DS_DB_POOL_RECYCLE", 180),
-        pool_timeout=_env_int("NEXUS_DS_DB_POOL_TIMEOUT", 10),
+        pool_recycle=rt.db_pool_recycle,
+        pool_timeout=rt.db_pool_timeout,
         pool_use_lifo=True,
         connect_args=_connect_args(),
     )
@@ -84,11 +80,12 @@ def get_engine() -> Engine:
         url = database_url()
         if not url:
             raise RuntimeError("NEXUS_DS_DATABASE_URL is required")
+        rt = get_runtime_env()
         _engine = _make_engine(
             url,
-            pool_size=_env_int("NEXUS_DS_DB_POOL_SIZE", 20),
-            max_overflow=_env_int("NEXUS_DS_DB_MAX_OVERFLOW", 40),
-            statement_timeout_ms=_env_int("NEXUS_DS_DB_STATEMENT_TIMEOUT_MS", 5000),
+            pool_size=rt.db_pool_size,
+            max_overflow=rt.db_max_overflow,
+            statement_timeout_ms=rt.db_statement_timeout_ms,
         )
         _Session = sessionmaker(_engine, expire_on_commit=False, autoflush=False)
     return _engine

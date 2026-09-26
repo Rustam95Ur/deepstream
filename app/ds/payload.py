@@ -1,14 +1,38 @@
-"""Internal trigger payload + SmartBox ingest envelope for Campus."""
+"""Internal trigger payload helpers (normalize / clip meta / build).
+
+SmartBox Campus ingest lives in ``app.campus.ingest``.
+"""
 
 from __future__ import annotations
 
-import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlsplit
 
-logger = logging.getLogger(__name__)
+_DEFAULT_RTSP_PORTS = {554, 80, 443}
+_SKIP_VIDEO_TRIGGERS = frozenset({"", "stream_silent"})
+CLIP_META_KEY = "_nexus_clip"
+
+__all__ = [
+    "CLIP_META_KEY",
+    "attach_clip",
+    "build_payload",
+    "clip_from_payload",
+    "has_clip_source",
+    "ipc_addr_from_uri",
+    "missing_video_reason",
+    "normalize_payload",
+    "requires_video",
+    "to_smartbox_ingest",
+]
+
+
+def to_smartbox_ingest(payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+    """Stable re-export — implementation in ``app.campus.ingest``."""
+    from app.campus.ingest import to_smartbox_ingest as _ingest
+
+    return _ingest(payload, **kwargs)
 
 
 def _str(value: Any) -> str:
@@ -20,17 +44,6 @@ def _float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
-
-
-# Campus types (incident_type). Unknown trigger names are sent as-is.
-_ALGO_MODEL = {
-    "vif": "Драки",
-    "convergence": "Драки",
-    "fall": "Падение",
-    "smoke": "Курение",
-}
-
-_DEFAULT_RTSP_PORTS = {554, 80, 443}
 
 
 def ipc_addr_from_uri(uri: str) -> str:
@@ -54,10 +67,6 @@ def ipc_addr_from_uri(uri: str) -> str:
     if "@" in raw:
         raw = raw.rsplit("@", 1)[-1]
     return raw
-
-
-_SKIP_VIDEO_TRIGGERS = frozenset({"", "stream_silent"})
-CLIP_META_KEY = "_nexus_clip"
 
 
 def clip_from_payload(payload: dict[str, Any]) -> dict[str, str]:
@@ -174,179 +183,6 @@ def attach_clip(
         "path": payload["clip_path"],
     }
     return payload
-
-
-def _capture_unix(trigger_time: str) -> int:
-    raw = _str(trigger_time)
-    if not raw:
-        return int(datetime.now(timezone.utc).timestamp())
-    try:
-        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return int(dt.timestamp())
-    except ValueError:
-        return int(datetime.now(timezone.utc).timestamp())
-
-
-def _time_received(ts: int) -> str:
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
-
-
-def _refresh_campus_video_url(event_id: str, video_url: str, *, has_clip: bool) -> str:
-    eid = _str(event_id)
-    url = _str(video_url)
-    if not eid or not (url or has_clip):
-        return url
-    from app.minio_store import campus_clip_url
-
-    return campus_clip_url(eid) or url
-
-
-def _lookup_local_camera_id(*, channel_name: str = "", ipc_addr: str = "") -> str:
-    """Resolve DeepStream camera id from name or RTSP when the job lost camera_id."""
-    name = _str(channel_name)
-    ipc = _str(ipc_addr)
-    if not name and not ipc:
-        return ""
-    try:
-        from app.storage import get_store
-
-        cameras = get_store().list_cameras()
-    except Exception:
-        logger.exception("channel_id lookup: failed to list local cameras")
-        return ""
-
-    by_id: list[str] = []
-    by_name: list[str] = []
-    by_ipc: list[str] = []
-    for cam in cameras:
-        cam_id = _str(getattr(cam, "id", None))
-        if not cam_id:
-            continue
-        cam_name = _str(getattr(cam, "name", None))
-        cam_ext = _str(getattr(cam, "external_id", None))
-        if name and (cam_id == name or cam_ext == name):
-            by_id.append(cam_id)
-        if name and cam_name == name:
-            by_name.append(cam_id)
-        if ipc:
-            derived = ipc_addr_from_uri(_str(getattr(cam, "main_uri", None)))
-            if derived and derived == ipc:
-                by_ipc.append(cam_id)
-    for group in (by_id, by_name, by_ipc):
-        uniq = list(dict.fromkeys(group))
-        if len(uniq) == 1:
-            logger.info(
-                "channel_id recovered from local cameras name=%r ipc=%r → %s",
-                name,
-                ipc,
-                uniq[0],
-            )
-            return uniq[0]
-    return ""
-
-
-def _resolve_channel_id(payload: dict[str, Any], channel: dict[str, Any]) -> str:
-    found = (
-        _str(payload.get("camera_id"))
-        or _str(channel.get("channel_id"))
-        or _str(channel.get("camera_id"))
-        or _str(channel.get("external_id"))
-        or _str(channel.get("external_cam_id"))
-    )
-    if found:
-        return found
-    return _lookup_local_camera_id(
-        channel_name=_str(channel.get("channel_name")) or _str(payload.get("camera_name")),
-        ipc_addr=_str(channel.get("ipc_addr")) or _str(payload.get("ipc_addr")),
-    )
-
-
-def to_smartbox_ingest(payload: dict[str, Any]) -> dict[str, Any]:
-    """
-    Campus ``POST /api/v1/incidents`` body.
-
-    Same shape as a SmartBox alert: envelope + ``alert_info`` with
-    ``channel_info`` / ``behaviour.algo_model`` / ``behaviour.video_url``.
-    Already-wrapped payloads get ``video_url`` rewritten and ``channel_id``
-    filled from ``camera_id`` or a local camera lookup (name / RTSP).
-    """
-    if isinstance(payload.get("alert_info"), dict):
-        out = dict(payload)
-        out.pop(CLIP_META_KEY, None)
-        alert = dict(payload["alert_info"] or {})
-        behaviour = dict(alert.get("behaviour") or {})
-        channel = dict(alert.get("channel_info") or {})
-        clip = clip_from_payload(payload)
-        video_url = _refresh_campus_video_url(
-            _str(payload.get("event_id")),
-            _str(behaviour.get("video_url")),
-            has_clip=bool(
-                clip["key"]
-                or clip["url"]
-                or clip["path"]
-                or _str(behaviour.get("video_url"))
-            ),
-        )
-        if video_url:
-            behaviour["video_url"] = video_url
-            alert["behaviour"] = behaviour
-        channel_id = _resolve_channel_id(payload, channel)
-        if channel_id:
-            channel["channel_id"] = channel_id
-            alert["channel_info"] = channel
-            out["camera_id"] = channel_id
-        out["alert_info"] = alert
-        return out
-    body = normalize_payload(payload)
-    trigger = _str(body.get("trigger_type"))
-    ts = _capture_unix(_str(body.get("trigger_time")))
-    channel_name = _str(body.get("camera_name")) or _str(body.get("camera_id"))
-    ipc = _str(body.get("ipc_addr")) or ipc_addr_from_uri(_str(body.get("camera_uri")))
-    device_name = _str(body.get("node_id")) or "nexus-deepstream"
-    event_id = _str(body.get("event_id"))
-    clip = clip_from_payload(body)
-    video_url = _refresh_campus_video_url(
-        event_id,
-        _str(body.get("video_url")),
-        has_clip=bool(clip["key"] or clip["url"] or clip["path"]),
-    )
-    incident = trigger not in {"", "stream_silent"}
-    behaviour: dict[str, Any] = {"capture_time": ts}
-    if video_url:
-        behaviour["video_url"] = video_url
-    if incident:
-        behaviour["algo_model"] = _ALGO_MODEL.get(trigger, trigger)
-    camera_id = _str(body.get("camera_id")) or _lookup_local_camera_id(
-        channel_name=channel_name,
-        ipc_addr=ipc,
-    )
-    channel_info: dict[str, Any] = {
-        "channel_name": channel_name,
-        "ipc_addr": ipc,
-    }
-    if camera_id:
-        channel_info["channel_id"] = camera_id
-    alert_info: dict[str, Any] = {
-        "type": 1 if incident else (trigger or "stream_silent"),
-        "device_info": {
-            "device_name": device_name,
-            "device_sn": device_name,
-        },
-        "channel_info": channel_info,
-        "behaviour": behaviour,
-    }
-    envelope: dict[str, Any] = {
-        "source": "nexus_deepstream",
-        "time_received": _time_received(ts),
-        "alert_info": alert_info,
-    }
-    if event_id:
-        envelope["event_id"] = event_id
-    if camera_id:
-        envelope["camera_id"] = camera_id
-    return envelope
 
 
 def build_payload(

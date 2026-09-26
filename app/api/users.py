@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.api import ApiAuth, LicenseAuth
 from app.paging import cursor_or_400, cursor_str
 from app.schemas import UserIn, UserListOut, UserOut, UserUpdateIn
+from app.timeutil import aware
 from app.users import (
     EmailTakenError,
     UserRecord,
@@ -25,14 +26,6 @@ router = APIRouter(
     tags=["users"],
     dependencies=[ApiAuth, LicenseAuth],
 )
-
-
-def _aware(dt: datetime | None) -> datetime | None:
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 
 def _out(user: UserRecord) -> UserOut:
@@ -62,8 +55,8 @@ def get_users(
     page_size = (limit or 10) if paginated else None
     users, next_cursor = list_users(
         q=q,
-        since=_aware(since),
-        until=_aware(until),
+        since=aware(since),
+        until=aware(until),
         after_email=after_email,
         after_id=after_id,
         limit=page_size,
