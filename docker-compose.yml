@@ -70,7 +70,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  nexus-deepstream-api:
+  api:
     build:
       context: .
       dockerfile: Dockerfile.api
@@ -95,7 +95,7 @@ services:
       NEXUS_DS_HISTORY_QUEUE: "20000"
       NEXUS_DS_HISTORY_BATCH: "200"
       NEXUS_DS_HISTORY_FLUSH_MS: "200"
-      NEXUS_DS_VIDEO_URL: http://nexus-deepstream-video:8081
+      NEXUS_DS_VIDEO_URL: http://pipeline:8081
       NEXUS_DS_VIDEO_TOKEN: ${NEXUS_DS_VIDEO_TOKEN:-nexus-video-internal}
       NEXUS_DS_MINIO_ENDPOINT_URL: ${NEXUS_DS_MINIO_ENDPOINT_URL:-http://minio:9000}
       NEXUS_DS_MINIO_ACCESS_KEY: ${NEXUS_DS_MINIO_ACCESS_KEY:-minioadmin}
@@ -132,7 +132,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  nexus-deepstream-video:
+  pipeline:
     build:
       context: .
       dockerfile: Dockerfile
@@ -190,7 +190,7 @@ services:
         hard: 1048576
       nproc: 65535
     depends_on:
-      nexus-deepstream-api:
+      api:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -250,7 +250,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      nexus-deepstream-api:
+      api:
         condition: service_healthy
     restart: unless-stopped
 
