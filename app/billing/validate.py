@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -76,6 +77,19 @@ def billing_api_key(settings: NodeSettings) -> str:
     return (settings.billing_api_key or "").strip() or env_str("NEXUS_DS_BILLING_API_KEY")
 
 
+def admin_license_key() -> str:
+    """Системный ключ: разблокирует модуль без запроса в Nexus Billing."""
+    return env_str("NEXUS_DS_ADMIN_LICENSE_KEY") or "NEXUS-DEEPSTREAM-ADMIN"
+
+
+def is_admin_license_key(api_key: str) -> bool:
+    expected = admin_license_key()
+    candidate = (api_key or "").strip()
+    if not expected or not candidate:
+        return False
+    return hmac.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
+
+
 def settings_for_check(
     settings: NodeSettings | None = None,
     *,
@@ -111,6 +125,21 @@ def validate_billing_key(settings: NodeSettings | None = None) -> BillingCheck:
             reason="missing_api_key",
             checked_at=now,
         )
+        return remember(check)
+
+    if is_admin_license_key(api_key):
+        check = BillingCheck(
+            url=url,
+            motherboard_serial=serial,
+            api_key_configured=True,
+            valid=True,
+            reason="admin_key",
+            destroy=False,
+            client_name="Administrator",
+            module="admin",
+            checked_at=now,
+        )
+        logger.info("admin license key accepted serial=%s", serial or "-")
         return remember(check)
 
     body = json.dumps(

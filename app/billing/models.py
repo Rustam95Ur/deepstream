@@ -16,6 +16,7 @@ REASON_LABELS = {
     "subscription_expired": "подписка истекла",
     "stolen_key": "ключ привязан к другой плате",
     "invalid": "ключ отклонён",
+    "admin_key": "ключ администратора",
 }
 
 

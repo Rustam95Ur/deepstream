@@ -17,10 +17,14 @@ const reasonLabels: Record<string, string> = {
   subscription_expired: "подписка истекла",
   stolen_key: "ключ привязан к другой плате",
   invalid: "ключ отклонён",
+  admin_key: "ключ администратора",
 };
 
 function reasonText(row: BillingCheck) {
-  if (row.valid) return "ключ действителен";
+  if (row.valid) {
+    if (row.reason === "admin_key") return "ключ администратора";
+    return "ключ действителен";
+  }
   const base = reasonLabels[row.reason] || row.reason || "нет статуса";
   if (row.destroy) return `${base} — контейнеры будут удалены`;
   return base;

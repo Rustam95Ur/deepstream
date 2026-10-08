@@ -19,6 +19,8 @@ from app.billing.state import (
     require_valid_license,
 )
 from app.billing.validate import (
+    admin_license_key,
+    is_admin_license_key,
     motherboard_serial,
     settings_for_check,
     validate_billing_key,
@@ -30,9 +32,11 @@ __all__ = [
     "LICENSE_LOCKED",
     "REASON_LABELS",
     "VideoLocalLock",
+    "admin_license_key",
     "apply_runtime_lock",
     "billing_status",
     "get_runtime_lock",
+    "is_admin_license_key",
     "is_video_role",
     "last_billing_check",
     "license_lock_detail",
