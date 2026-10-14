@@ -9,4 +9,5 @@ FROM nginx:1.27-alpine
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
 RUN rm -f /etc/nginx/conf.d/default.conf
 COPY --from=build /src/dist /usr/share/nginx/html
+COPY docs/cli.html /usr/share/nginx/html/cli.html
 EXPOSE 80

@@ -35,6 +35,16 @@ def spa_login():
     return spa_index()
 
 
+_CLI_DOC = Path(__file__).resolve().parents[2] / "docs" / "cli.html"
+
+
+@router.get("/cli.html", response_model=None)
+def cli_manual():
+    if not _CLI_DOC.is_file():
+        raise HTTPException(status_code=404, detail="CLI manual is not installed")
+    return FileResponse(_CLI_DOC, media_type="text/html")
+
+
 @router.get("/{full_path:path}", response_model=None)
 def spa_fallback(full_path: str):
     if full_path.startswith(("api/", "docs", "redoc", "openapi.json", "static/")):

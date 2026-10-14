@@ -12,6 +12,7 @@ import TriggersView from "./views/TriggersView.vue";
 import UsersView from "./views/UsersView.vue";
 import UserFormView from "./views/UserFormView.vue";
 import DocsView from "./views/DocsView.vue";
+import PreviewLabView from "./views/PreviewLabView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -31,6 +32,7 @@ export const router = createRouter({
         { path: "ingest", name: "ingest", component: IngestView },
         { path: "triggers", name: "triggers", component: TriggersView },
         { path: "history", name: "history", component: HistoryView },
+        { path: "preview", name: "preview", component: PreviewLabView },
         { path: "users", name: "users", component: UsersView },
         { path: "users/new", name: "user-new", component: UserFormView },
         { path: "users/:id", name: "user-edit", component: UserFormView },
@@ -51,6 +53,7 @@ router.beforeEach(async (to) => {
       !session.license_valid &&
       to.name !== "settings" &&
       to.name !== "guide" &&
+      to.name !== "preview" &&
       to.name !== "login"
     ) {
       return { name: "settings" };

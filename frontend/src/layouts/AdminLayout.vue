@@ -23,6 +23,7 @@ const titles: Record<string, { title: string; desc: string }> = {
   "user-new": { title: "Новый пользователь", desc: "Email и пароль для входа" },
   "user-edit": { title: "Изменить пользователя", desc: "Email, имя и пароль" },
   guide: { title: "Справка", desc: "Как устроена нода и что проверять" },
+  preview: { title: "Превью", desc: "Кадр инцидента и красные квадраты" },
 };
 
 const page = computed(() => titles[String(route.name)] || titles.overview);
@@ -38,6 +39,7 @@ const nav = [
   { name: "ingest", label: "Связь", icon: "link" },
   { name: "triggers", label: "Сценарии", icon: "bolt" },
   { name: "history", label: "История", icon: "history" },
+  { name: "preview", label: "Превью", icon: "box" },
   { name: "users", label: "Пользователи", icon: "user" },
   { name: "guide", label: "Справка", icon: "book" },
 ] as const;
@@ -77,7 +79,7 @@ async function logout() {
 }
 
 function unlocked(name: string) {
-  return name === "settings" || name === "guide";
+  return name === "settings" || name === "guide" || name === "preview";
 }
 
 function go(name: string) {
@@ -181,6 +183,10 @@ async function onStop() {
             <svg v-else-if="item.icon === 'history'" width="26" height="26" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6"/>
               <path d="M12 8v4.5l3 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <svg v-else-if="item.icon === 'box'" width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <rect x="3.5" y="5" width="17" height="14" rx="2" stroke="currentColor" stroke-width="1.6"/>
+              <rect x="8" y="8.5" width="7" height="6" stroke="#ff1a1a" stroke-width="1.6"/>
             </svg>
             <svg v-else-if="item.icon === 'book'" width="26" height="26" viewBox="0 0 24 24" fill="none">
               <path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v16H7.5A2.5 2.5 0 0 0 5 21.5V5.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>

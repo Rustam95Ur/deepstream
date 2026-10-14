@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Команды консоли — Nexus DeepStream</title>
+  <style>
+    :root {
+      --bg: #f9f9f9;
+      --surface: #ffffff;
+      --text: #071437;
+      --muted: #78829d;
+      --gray-700: #4b5675;
+      --primary: #1b84ff;
+      --primary-light: #e9f3ff;
+      --dark: #1e2129;
+      --line: #f1f1f4;
+      --line-strong: #dbdfe9;
+      --err: #f8285a;
+      --err-bg: #fff5f8;
+      --ok: #17c653;
+      --ok-bg: #e8fff3;
+      --font: Inter, Helvetica, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      --mono: "Cascadia Mono", "Segoe UI Mono", Consolas, ui-monospace, monospace;
+      --nav: 15.5rem;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      max-width: 100%;
+      overflow-x: hidden;
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.55;
+      color: var(--gray-700);
+      background: var(--bg);
+    }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header {
+      max-width: 100%;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line-strong);
+      padding: 1.25rem 1.5rem 1.1rem;
+    }
+    header h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: 1.45rem;
+      letter-spacing: -0.02em;
+    }
+    header p { margin: 0.35rem 0 0; max-width: 42rem; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, var(--nav)) minmax(0, 46rem);
+      gap: 1.5rem;
+      align-items: start;
+      max-width: 68rem;
+      margin: 0 auto;
+      padding: 1.25rem 1.25rem 4rem;
+    }
+    nav {
+      position: sticky;
+      top: 0.75rem;
+      max-height: calc(100dvh - 1.5rem);
+      overflow: auto;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 0.625rem;
+      padding: 0.75rem 0.4rem;
+    }
+    nav a {
+      display: block;
+      color: var(--gray-700);
+      padding: 0.32rem 0.7rem;
+      border-radius: 0.4rem;
+      font-size: 0.92rem;
+    }
+    nav a:hover { background: var(--primary-light); text-decoration: none; }
+    nav .group {
+      margin: 0.7rem 0.7rem 0.2rem;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    main { min-width: 0; }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 0.625rem;
+      padding: 1.1rem 1.2rem 1.2rem;
+      margin-bottom: 0.9rem;
+      overflow-x: auto;
+    }
+    h2 {
+      margin: 0 0 0.55rem;
+      color: var(--text);
+      font-size: 1.15rem;
+    }
+    h3 {
+      margin: 1.15rem 0 0.4rem;
+      color: var(--text);
+      font-size: 0.98rem;
+    }
+    p { margin: 0.45rem 0; }
+    .note, .warn {
+      border-radius: 0.5rem;
+      padding: 0.7rem 0.85rem;
+      margin: 0.7rem 0;
+    }
+    .note { background: var(--primary-light); color: var(--text); }
+    .warn { background: var(--err-bg); color: var(--text); }
+    code, pre { font-family: var(--mono); }
+    code {
+      font-size: 0.86em;
+      color: var(--text);
+      background: var(--line);
+      padding: 0.05rem 0.28rem;
+      border-radius: 0.25rem;
+      overflow-wrap: anywhere;
+    }
+    .cmd {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      margin: 0.55rem 0 0.3rem;
+      min-width: 0;
+      max-width: 100%;
+    }
+    pre {
+      margin: 0;
+      min-width: 0;
+      max-width: 100%;
+      padding: 0.75rem 0.85rem;
+      background: var(--dark);
+      color: #f5f5f5;
+      border-radius: 0.5rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    pre code { color: inherit; background: transparent; padding: 0; }
+    button.copy {
+      align-self: flex-start;
+      order: -1;
+      margin: 0 0 0.35rem;
+      border: 0;
+      border-radius: 0.35rem;
+      background: var(--dark);
+      color: #fff;
+      font: inherit;
+      font-size: 0.75rem;
+      padding: 0.28rem 0.55rem;
+      cursor: pointer;
+    }
+    button.copy:hover { background: var(--primary); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.4rem 0 0.2rem;
+      font-size: 0.92rem;
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 0.4rem 0.5rem;
+      border-top: 1px solid var(--line);
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; }
+    td:first-child { color: var(--text); }
+    ul { margin: 0.35rem 0 0.2rem; padding-left: 1.15rem; }
+    @media (max-width: 820px) {
+      .layout { display: block; }
+      nav { position: static; max-height: none; margin-bottom: 0.9rem; }
+      pre { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Команды консоли</h1>
+    <p>
+      Те же камеры, настройки, webhook и пользователи, что в веб-консоли.
+      Команды пишут в Postgres и <code>settings.json</code> напрямую, без входа в браузер.
+    </p>
+  </header>
+
+  <div class="layout">
+    <nav aria-label="Содержание">
+      <div class="group">Старт</div>
+      <a href="#run">Как запускать</a>
+      <a href="#flags">Общие флаги</a>
+      <div class="group">Данные</div>
+      <a href="#cameras">Камеры</a>
+      <a href="#settings">Настройки</a>
+      <a href="#webhooks">Webhook</a>
+      <a href="#users">Пользователи</a>
+      <div class="group">Нода</div>
+      <a href="#status">Статус</a>
+      <a href="#worker">Пайплайн</a>
+      <a href="#billing">Лицензия</a>
+      <a href="#history">История</a>
+    </nav>
+
+    <main>
+      <section id="run">
+        <h2>Как запускать</h2>
+        <p>
+          Команду нужно выполнять в контейнере <code>api</code>. Там уже заданы адрес базы
+          и адрес video-процесса, поэтому после правки камер пайплайн перечитывает конфиг.
+        </p>
+        <div class="cmd">
+          <button class="copy" type="button">Копировать</button>
+          <pre><code>docker exec -it nexus-deepstream-api python -m app.cli status
+docker exec -it nexus-deepstream-api python -m app.cli cameras list</code></pre>
+        </div>
+        <p>
+          <code>-it</code> нужен, когда пароль спрашивается в консоли.
+          В скрипте передайте пароль флагом <code>--password</code> и вызывайте
+          <code>docker exec</code> без интерактивного режима.
+        </p>
+        <p>
+          На машине разработчика, где уже выставлен <code>NEXUS_DS_DATABASE_URL</code>:
+        </p>
+        <div class="cmd">
+          <button class="copy" type="button">Копировать</button>
+          <pre><code>poetry run python -m app.cli cameras list</code></pre>
+        </div>
+        <p>
+          Справка по группе: <code>python -m app.cli cameras --help</code>.
+          Эта страница лежит в репозитории как <code>docs/cli.html</code> и открывается
+          в браузере по адресу <code>/cli.html</code>, даже если Vue-консоль не собрана.
+        </p>
+        <div class="warn">
+          Не запускайте команды в контейнере <code>video</code>. Миграции через PgBouncer
+          там некуда слать, а перезагрузка пайплайна не вызовется.
+        </div>
+      </section>
+
+      <section id="flags">
+        <h2>Общие флаги</h2>
+        <table>
+          <thead><tr><th>Флаг</th><th>Зачем</th></tr></thead>
+          <tbody>
+            <tr><td><code>--json</code></td><td>Результат одним JSON. Ошибки тоже JSON, но в stderr. Ставится перед группой: <code>--json cameras list</code>.</td></tr>
+            <tr><td><code>--version</code></td><td>Версия ноды.</td></tr>
+            <tr><td><code>--yes</code></td><td>Подтверждение удаления. Без него <code>delete</code> ничего не сотрёт.</td></tr>
+            <tr><td><code>--help</code></td><td>Справка по текущей команде. База для этого не нужна.</td></tr>
+          </tbody>
+        </table>
+        <p>Код выхода <code>0</code> — успех, <code>1</code> — ошибка данных или базы, <code>2</code> — неверные аргументы, <code>130</code> — прервано с клавиатуры.</p>
+      </section>
+
+      <section id="cameras">
+        <h2>Камеры</h2>
+        <p>Поток — это <code>rtsp://</code> или <code>file://</code>. После создания, правки и удаления video-процесс получает reload.</p>
+
+        <h3>Список и карточка</h3>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli cameras list
+python -m app.cli cameras list --q калитка --enabled true
+python -m app.cli cameras get cam_gate</code></pre>
+        </div>
+        <table>
+          <thead><tr><th>Флаг</th><th>Зачем</th></tr></thead>
+          <tbody>
+            <tr><td><code>--q</code></td><td>Поиск по id, имени и адресу.</td></tr>
+            <tr><td><code>--enabled true|false</code></td><td>Только включённые или только выключенные.</td></tr>
+            <tr><td><code>--limit</code>, <code>--cursor</code></td><td>Страница. Если строк больше лимита, внизу будет курсор следующей.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Создать</h3>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli cameras add --id cam_gate --name "Калитка" --uri "rtsp://user:pass@10.0.0.12/stream1"
+python -m app.cli cameras add --name "Запас" --uri rtsp://10.0.0.12/stream1 --disabled
+python -m app.cli cameras add --name "Двор" --uri rtsp://10.0.0.20/stream --triggers presence,vif</code></pre>
+        </div>
+        <table>
+          <thead><tr><th>Флаг</th><th>Зачем</th></tr></thead>
+          <tbody>
+            <tr><td><code>--uri</code></td><td>Обязателен. Адрес потока.</td></tr>
+            <tr><td><code>--id</code></td><td>Стабильный id. Если занят, команда остановится, а не перезапишет камеру.</td></tr>
+            <tr><td><code>--name</code></td><td>Имя. Пустое имя станет равным id.</td></tr>
+            <tr><td><code>--external-id</code></td><td>id камеры в Campus.</td></tr>
+            <tr><td><code>--disabled</code></td><td>Создать выключенной. По умолчанию камера сразу включена.</td></tr>
+            <tr><td><code>--triggers</code></td><td>Список через запятую: <code>presence</code>, <code>convergence</code>, <code>vif</code>, <code>stream_silent</code>, <code>fall</code>, <code>smoke</code>. Без флага камера берёт типы ноды.</td></tr>
+            <tr><td><code>--no-triggers</code></td><td>На этой камере не запускать ни один тип.</td></tr>
+            <tr><td><code>--meta</code></td><td>JSON-объект дополнительных полей, например <code>{"fps":25,"resolution_width":1280}</code>.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Изменить, включить, выключить, удалить</h3>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli cameras update cam_gate --name "Калитка запад" --uri rtsp://10.0.0.12/stream2
+python -m app.cli cameras update cam_gate --inherit-triggers
+python -m app.cli cameras enable cam_gate
+python -m app.cli cameras disable cam_gate
+python -m app.cli cameras delete cam_gate --yes</code></pre>
+        </div>
+        <p>
+          <code>update</code> меняет только переданные поля. <code>--meta</code> дописывает ключи к уже сохранённым.
+          <code>disable</code> ждёт, пока камера уйдёт из пайплайна, до 15 секунд.
+          <code>delete</code> без <code>--yes</code> не удаляет.
+        </p>
+
+        <h3>Пачка тестовых камер</h3>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli cameras test --uri rtsp://127.0.0.1:8554/cam1 --count 2</code></pre>
+        </div>
+        <p>Создаёт <code>test_1</code>, <code>test_2</code>, … на один и тот же адрес, в пределах <code>max_streams</code>. <code>--count</code> от 1 до 128.</p>
+      </section>
+
+      <section id="settings">
+        <h2>Настройки ноды</h2>
+        <p>Файл <code>settings.json</code> в каталоге данных. После записи video-процесс перечитывает конфиг. Полный список имён: <code>settings keys</code>.</p>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli settings show
+python -m app.cli settings keys
+python -m app.cli settings set max_streams=8 node_name="Узел двор"
+python -m app.cli settings set enable_clip_record=true cooldown_s=30
+python -m app.cli settings set enabled_triggers=presence,convergence,vif,stream_silent
+python -m app.cli settings set billing_api_key=XXXX --reveal</code></pre>
+        </div>
+        <table>
+          <thead><tr><th>Ключ</th><th>Смысл</th></tr></thead>
+          <tbody>
+            <tr><td><code>node_id</code>, <code>node_name</code></td><td>Идентификатор и имя ноды.</td></tr>
+            <tr><td><code>max_streams</code></td><td>Сколько камер разбирать одновременно, от 1 до 128.</td></tr>
+            <tr><td><code>enable_clip_record</code></td><td><code>true</code> / <code>false</code>. Вырезать ролик.</td></tr>
+            <tr><td><code>enable_http_sink</code></td><td>Отправлять события на webhook.</td></tr>
+            <tr><td><code>enabled_triggers</code></td><td>Типы через запятую. <code>none</code> — выключить все на ноде.</td></tr>
+            <tr><td><code>clip_pre_s</code>, <code>clip_post_s</code></td><td>Секунды ролика до и после события.</td></tr>
+            <tr><td><code>cooldown_s</code></td><td>Пауза перед повторным событием.</td></tr>
+            <tr><td><code>presence_min_people</code>, <code>presence_sustain_s</code></td><td>Порог присутствия.</td></tr>
+            <tr><td><code>min_tracks</code>, <code>converge_dist_bh</code>, <code>sustain_s</code></td><td>Порог схождения.</td></tr>
+            <tr><td><code>vif_iou_thresh</code>, <code>vif_sustain_s</code></td><td>Порог пересечения.</td></tr>
+            <tr><td><code>stream_silent_s</code></td><td>Сколько секунд без кадров считать тишиной.</td></tr>
+            <tr><td><code>conf_threshold</code>, <code>infer_interval</code></td><td>Детектор: порог и каждый N-й кадр.</td></tr>
+            <tr><td><code>mux_width</code>, <code>mux_height</code></td><td>Размер кадра в пайплайне.</td></tr>
+            <tr><td><code>auto_start_pipeline</code></td><td>Запускать разбор при старте video.</td></tr>
+            <tr><td><code>billing_url</code>, <code>billing_api_key</code></td><td>Лицензия. Смена ключа сразу запускает проверку.</td></tr>
+            <tr><td><code>trigger_thresholds</code></td><td>JSON с порогами по типам. Обычно хватает плоских ключей выше.</td></tr>
+          </tbody>
+        </table>
+        <p>Булевы значения: <code>true</code>, <code>false</code>, <code>yes</code>, <code>no</code>, <code>1</code>, <code>0</code>, <code>да</code>, <code>нет</code>.</p>
+        <p><code>settings show</code> прячет ключ лицензии. <code>--reveal</code> показывает его.</p>
+        <div class="note">
+          <code>triggers_url</code> только заготовка: при пустой таблице webhook API один раз создаёт запись из этого адреса на своём старте. Живые адреса задаются командой <code>webhooks add</code>.
+        </div>
+      </section>
+
+      <section id="webhooks">
+        <h2>Webhook</h2>
+        <p>
+          Сюда нода шлёт инциденты. Логин и пароль — это ещё и Basic-доступ, которым Campus
+          читает и пишет камеры по HTTP. Пароль в списке не показывается, только факт, что он задан.
+        </p>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli webhooks list
+python -m app.cli webhooks add --name campus --url https://campus.example/api/v1/school/incident-ingest/ --login node1 --password 'secret-pass'
+python -m app.cli webhooks update WEBHOOK_ID --url https://campus.example/api/v1/school/incident-ingest/ --retries 8
+python -m app.cli webhooks disable WEBHOOK_ID
+python -m app.cli webhooks enable WEBHOOK_ID
+python -m app.cli webhooks delete WEBHOOK_ID --yes</code></pre>
+        </div>
+        <table>
+          <thead><tr><th>Флаг</th><th>Зачем</th></tr></thead>
+          <tbody>
+            <tr><td><code>--url</code></td><td>Адрес, начинается с <code>http://</code> или <code>https://</code>.</td></tr>
+            <tr><td><code>--login</code></td><td>Обязателен при создании. Двоеточие в логине нельзя.</td></tr>
+            <tr><td><code>--password</code></td><td>Минимум 8 символов. Если флага нет, команда спросит дважды.</td></tr>
+            <tr><td><code>--name</code></td><td>Короткое имя. По умолчанию <code>webhook</code>.</td></tr>
+            <tr><td><code>--timeout</code></td><td>Секунды ожидания ответа, от 1 до 120. По умолчанию 5.</td></tr>
+            <tr><td><code>--retries</code></td><td>Повторы после ошибки, от 0 до 20. По умолчанию 5.</td></tr>
+            <tr><td><code>--disabled</code></td><td>Создать выключенным.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="users">
+        <h2>Пользователи консоли</h2>
+        <p>Это вход в веб-интерфейс ноды, не учётная запись Campus. Пароль в список не попадает.</p>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli users list
+python -m app.cli users add --email operator@school.example --name "Оператор" --password 'long-pass'
+python -m app.cli users get operator@school.example
+python -m app.cli users update operator@school.example --password 'new-long-pass'
+python -m app.cli users delete operator@school.example --yes</code></pre>
+        </div>
+        <p><code>get</code>, <code>update</code> и <code>delete</code> принимают id или email. Пароль короче 8 символов не сохранится. Без <code>--password</code> команда <code>add</code> спросит его и попросит повторить.</p>
+      </section>
+
+      <section id="status">
+        <h2>Статус</h2>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli status</code></pre>
+        </div>
+        <p>Имя ноды, число камер, идёт ли разбор, первый включённый webhook и действительна ли лицензия.</p>
+      </section>
+
+      <section id="worker">
+        <h2>Пайплайн</h2>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli worker status
+python -m app.cli worker start
+python -m app.cli worker stop
+python -m app.cli worker reload</code></pre>
+        </div>
+        <p>
+          <code>reload</code> просит video заново прочитать камеры и настройки. Камеры и
+          <code>settings set</code> делают это сами. В выводе видно, какие камеры не попали
+          в разбор и почему: выключена, упёрлись в <code>max_streams</code>, пайплайн остановлен.
+        </p>
+      </section>
+
+      <section id="billing">
+        <h2>Лицензия</h2>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli billing status
+python -m app.cli settings set billing_api_key=XXXX billing_url=https://billing.example/api/v1/public/keys/validate
+python -m app.cli billing check
+python -m app.cli billing check --key XXXX --url https://billing.example/api/v1/public/keys/validate</code></pre>
+        </div>
+        <p>
+          Сохраняет ключ только <code>settings set</code>. <code>billing check</code> проверяет
+          текущий ключ, а <code>--key</code> и <code>--url</code> действуют на один запрос и в файл не пишутся.
+        </p>
+        <div class="warn">
+          Ответ <code>stolen_key</code> с требованием уничтожения останавливает контейнеры этого
+          compose-проекта так же, как проверка из веба. Том с данными при этом остаётся.
+        </div>
+      </section>
+
+      <section id="history">
+        <h2>История</h2>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli history triggers --limit 20
+python -m app.cli history triggers --camera cam_gate --type presence
+python -m app.cli history show EVENT_ID
+python -m app.cli --json history show EVENT_ID
+python -m app.cli history resend EVENT_ID
+python -m app.cli history outbound --status dead
+python -m app.cli history retry JOB_ID
+python -m app.cli history sends --event EVENT_ID</code></pre>
+        </div>
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td><code>triggers</code></td><td>Сработки. Фильтры <code>--camera</code>, <code>--type</code>, <code>--event</code>.</td></tr>
+            <tr><td><code>show</code></td><td>Одно событие. Полный payload — с <code>--json</code>.</td></tr>
+            <tr><td><code>resend</code></td><td>Снова ставит событие во все включённые webhook.</td></tr>
+            <tr><td><code>outbound</code></td><td>Очередь доставки. Статусы: <code>pending</code>, <code>retrying</code>, <code>dead</code>, <code>ok</code>.</td></tr>
+            <tr><td><code>retry</code></td><td>Повторить одно задание по его id из <code>outbound</code>.</td></tr>
+            <tr><td><code>sends</code></td><td>Журнал уже сделанных HTTP-попыток.</td></tr>
+          </tbody>
+        </table>
+        <p><code>--limit</code> от 1 до 500, по умолчанию 20. Дальше — <code>--cursor</code> из нижней строки ответа.</p>
+      </section>
+    </main>
+  </div>
+  <script>
+    document.querySelectorAll("button.copy").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var code = button.parentElement.querySelector("code");
+        var text = code ? code.innerText : "";
+        var done = function () {
+          var previous = button.textContent;
+          button.textContent = "Скопировано";
+          setTimeout(function () { button.textContent = previous; }, 1200);
+        };
+        var fallback = function () {
+          var area = document.createElement("textarea");
+          area.value = text;
+          area.setAttribute("readonly", "");
+          area.style.position = "fixed";
+          area.style.left = "-9999px";
+          document.body.appendChild(area);
+          area.select();
+          try { document.execCommand("copy"); } catch (err) { /* file:// may block clipboard */ }
+          document.body.removeChild(area);
+          done();
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(fallback);
+          return;
+        }
+        fallback();
+      });
+    });
+  </script>
+</body>
+</html>

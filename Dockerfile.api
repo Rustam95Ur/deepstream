@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir --disable-pip-version-check "poetry==${POETRY_VER
     && rm -rf /root/.cache
 
 COPY app /opt/nexus_deepstream/app
+COPY docs/cli.html /opt/nexus_deepstream/docs/cli.html
 COPY alembic.ini /opt/nexus_deepstream/alembic.ini
 COPY alembic /opt/nexus_deepstream/alembic
 COPY shell /opt/nexus_deepstream/shell

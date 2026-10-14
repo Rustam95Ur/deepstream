@@ -24,6 +24,20 @@ poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
 
 Open http://127.0.0.1:8080 — add cameras and webhooks.
 
+## Console
+
+When the web UI is down, the same registry is available from the shell. Run it in the **api** container so it sees Postgres and can ask the video process to reload:
+
+```bash
+docker exec -it nexus-deepstream-api python -m app.cli cameras list
+docker exec -it nexus-deepstream-api python -m app.cli cameras add --name Gate --uri rtsp://10.0.0.12/stream1
+docker exec -it nexus-deepstream-api python -m app.cli settings set max_streams=8
+```
+
+On a host that already has `NEXUS_DS_DATABASE_URL`: `poetry run python -m app.cli status`.
+
+Command reference (Russian): [docs/cli.html](docs/cli.html), also served at `/cli.html`.
+
 Pipeline stays idle without DeepStream (`pyservicemaker`); API/UI still work. GPU pipeline + ring-buffer run in a separate process:
 
 ```bash
