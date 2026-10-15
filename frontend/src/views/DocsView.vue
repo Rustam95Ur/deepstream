@@ -141,8 +141,8 @@ const consolePages = [
             </li>
           </ol>
           <p class="lede docs-note">
-            Campus узнаёт ноду по номеру (`device_sn` = `external_id` устройства)
-            и камеру по `channel_id` (`external_cam_id`). Номер ноды и id камеры должны совпадать.
+            Campus узнаёт ноду по `device_sn` (`external_id` устройства)
+            и камеру по `external_cam_id`. Привязка камеры к ноде для приёма не нужна.
           </p>
         </div>
       </section>

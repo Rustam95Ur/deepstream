@@ -221,7 +221,7 @@ Same envelope as a SmartBox device. Point the webhook at Campus ingest:
 
 `https://<campus>/api/v1/incidents/`
 
-Campus matches the node by `device_info.device_sn` = `Device.external_id` (this node's `node_id`) and the camera by `channel_info.channel_id` = `Camera.external_cam_id`. The node sets `device_sn` from `node_id` and `channel_id` from the local camera id. Keep those ids in sync.
+Campus matches the node by `device_info.device_sn` = `Device.external_id` (this node's `node_id`) and the camera by `channel_info.external_cam_id` = `Camera.external_cam_id`. The node sets `device_sn` from `node_id` and `external_cam_id` from the local camera id. The camera does not have to be linked to that device.
 
 `vif` / `convergence` → `Драки`. `fall` → `Падение`. `smoke` → `Курение`. `presence` is sent as `presence`. `stream_silent` has no `algo_model`, so Campus stores an ingest log, not an incident (JSON only, no video).
 
@@ -242,7 +242,7 @@ Without a clip the webhook is skipped (history still records the trigger). `stre
     "device_info": {"device_name": "ds-1", "device_sn": "ds-1"},
     "channel_info": {
       "channel_name": "Калитка",
-      "channel_id": "cam_gate",
+      "external_cam_id": "cam_gate",
       "ipc_addr": "10.0.0.12/stream1"
     },
     "behaviour": {

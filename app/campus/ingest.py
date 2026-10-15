@@ -45,17 +45,19 @@ def _time_received(ts: int) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
 
 
-def _resolve_channel_id(
+def _resolve_external_cam_id(
     payload: dict[str, Any],
     channel: dict[str, Any],
     resolver: CameraResolver,
 ) -> str:
+    """Campus matches ``channel_info.external_cam_id`` to ``Camera.external_cam_id``."""
     found = (
-        _str(payload.get("camera_id"))
+        _str(channel.get("external_cam_id"))
+        or _str(payload.get("external_cam_id"))
+        or _str(payload.get("camera_id"))
         or _str(channel.get("channel_id"))
         or _str(channel.get("camera_id"))
         or _str(channel.get("external_id"))
-        or _str(channel.get("external_cam_id"))
     )
     if found:
         return found
@@ -76,8 +78,9 @@ def to_smartbox_ingest(
 
     Same shape as a SmartBox alert: envelope + ``alert_info`` with
     ``channel_info`` / ``behaviour.algo_model`` / ``behaviour.video_url``.
-    Already-wrapped payloads get ``video_url`` rewritten and ``channel_id``
-    filled from ``camera_id`` or a local camera lookup (name / RTSP).
+    Campus matches the node by ``device_info.device_sn`` and the camera by
+    ``channel_info.external_cam_id``. Already-wrapped payloads get ``video_url``
+    rewritten and ``external_cam_id`` filled from the local camera id.
     """
     cam_resolver = resolver if resolver is not None else get_camera_resolver()
     if isinstance(payload.get("alert_info"), dict):
@@ -100,11 +103,16 @@ def to_smartbox_ingest(
         if video_url:
             behaviour["video_url"] = video_url
             alert["behaviour"] = behaviour
-        channel_id = _resolve_channel_id(payload, channel, cam_resolver)
-        if channel_id:
-            channel["channel_id"] = channel_id
+        external_cam_id = _resolve_external_cam_id(payload, channel, cam_resolver)
+        if external_cam_id:
+            channel["external_cam_id"] = external_cam_id
             alert["channel_info"] = channel
-            out["camera_id"] = channel_id
+            out["external_cam_id"] = external_cam_id
+        device = dict(alert.get("device_info") or {})
+        device_sn = _str(device.get("device_sn")) or _str(payload.get("node_id"))
+        if device_sn:
+            device["device_sn"] = device_sn
+            alert["device_info"] = device
         out["alert_info"] = alert
         return out
     body = normalize_payload(payload)
@@ -126,7 +134,7 @@ def to_smartbox_ingest(
         behaviour["video_url"] = video_url
     if incident:
         behaviour["algo_model"] = ALGO_MODEL.get(trigger, trigger)
-    camera_id = _str(body.get("camera_id")) or cam_resolver.resolve_id(
+    external_cam_id = _str(body.get("camera_id")) or cam_resolver.resolve_id(
         channel_name=channel_name,
         ipc_addr=ipc,
     )
@@ -134,8 +142,8 @@ def to_smartbox_ingest(
         "channel_name": channel_name,
         "ipc_addr": ipc,
     }
-    if camera_id:
-        channel_info["channel_id"] = camera_id
+    if external_cam_id:
+        channel_info["external_cam_id"] = external_cam_id
     alert_info: dict[str, Any] = {
         "type": 1 if incident else (trigger or "stream_silent"),
         "device_info": {
@@ -152,6 +160,6 @@ def to_smartbox_ingest(
     }
     if event_id:
         envelope["event_id"] = event_id
-    if camera_id:
-        envelope["camera_id"] = camera_id
+    if external_cam_id:
+        envelope["external_cam_id"] = external_cam_id
     return envelope
