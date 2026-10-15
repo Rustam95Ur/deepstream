@@ -24,13 +24,15 @@ def probe_current_stream(camera_id: str) -> CameraProbeOut:
         enabled=cam.enabled,
         name=cam.name or cam.id,
     )
-    frame = grab_jpeg(spec.main_uri)
+    frame, lines = grab_jpeg(spec.main_uri)
     from_ring = False
     if frame is None:
-        frame = _frame_from_ring(spec, configs)
+        frame, ring_lines = _frame_from_ring(spec, configs)
+        lines.extend(ring_lines)
         from_ring = frame is not None
+    debug = "\n".join(lines)
     if not frame:
-        return CameraProbeOut(ok=False, detail="Поток не отвечает")
+        return CameraProbeOut(ok=False, detail="Поток не отвечает", debug=debug)
 
     meta = probe_video(spec.main_uri, timeout_sec=4.0) if not from_ring else {}
     detail = (
@@ -46,25 +48,35 @@ def probe_current_stream(camera_id: str) -> CameraProbeOut:
         height=int(meta.get("height") or 0),
         fps=float(meta.get("fps") or 0),
         image=base64.b64encode(frame).decode("ascii"),
+        debug=debug,
     )
 
 
 def _frame_from_ring(
     camera: CameraConfig,
     cameras: dict[str, CameraConfig],
-) -> bytes | None:
+) -> tuple[bytes | None, list[str]]:
     now = time.time()
+    lines = ["запись потока:"]
+    found = False
     for path in recent_ring_segments(camera, cameras):
+        found = True
         try:
             age = now - path.stat().st_mtime
-        except OSError:
+        except OSError as exc:
+            lines.append(f"{path.name}: не прочитан ({exc.__class__.__name__})")
             continue
         if age > _RING_FRESH_S:
+            lines.append(f"{path.name}: устарел, {age:.0f} с назад")
             break
-        frame = grab_jpeg(str(path), tail=True, timeout_sec=8.0)
+        frame, grab_lines = grab_jpeg(str(path), tail=True, timeout_sec=8.0)
+        lines.append(f"{path.name}: возраст {age:.0f} с")
+        lines.extend(f"  {line}" for line in grab_lines)
         if frame:
-            return frame
-    return None
+            return frame, lines
+    if not found:
+        lines.append("свежих сегментов нет")
+    return None, lines
 
 
 def _configs() -> dict[str, CameraConfig]:

@@ -144,6 +144,7 @@ export const api = {
       height: number;
       fps: number;
       image: string;
+      debug: string;
     }>(`/api/v1/cameras/${encodeURIComponent(id)}/probe`, { method: "POST" }),
   worker: () => request<WorkerStatus>("/api/v1/worker"),
   videoHealth: () => request<VideoHealth>("/api/v1/video/health"),

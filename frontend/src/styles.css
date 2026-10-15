@@ -940,6 +940,20 @@ td.uri { word-break: break-all; color: var(--muted); max-width: 320px; }
   background: #111;
   border-radius: var(--radius-sm);
 }
+.probe-debug {
+  margin: 0.9rem 0 0;
+  padding: 0.75rem 0.9rem;
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  background: #f6f7f9;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
 .modal-actions { margin-top: 1.1rem; }
 .td-action .row { justify-content: flex-end; }
 .skeleton { min-height: 8.5rem; background: #f1f1f4; }

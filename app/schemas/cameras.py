@@ -229,3 +229,4 @@ class CameraProbeOut(BaseModel):
     height: int = 0
     fps: float = 0
     image: str = ""
+    debug: str = ""

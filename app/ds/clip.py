@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -513,52 +516,89 @@ def _mtime(path: Path) -> float:
         return 0.0
 
 
-def grab_jpeg(source: str, *, tail: bool = False, timeout_sec: float = 12.0) -> bytes | None:
-    """One JPEG frame from a live URI or a local file."""
+_RTSP_SECRET = re.compile(r"(?i)(rtsp://)([^/\s@\"']+)@")
+
+
+def redact_media_text(text: str) -> str:
+    return _RTSP_SECRET.sub(r"\1…@", text or "")
+
+
+def grab_jpeg(
+    source: str, *, tail: bool = False, timeout_sec: float = 12.0
+) -> tuple[bytes | None, list[str]]:
+    """One JPEG frame. Returns ``(bytes or None, debug lines)``."""
     uri = (source or "").strip()
+    lines = [_ffmpeg_line()]
     if not uri:
-        return None
-    is_rtsp = uri.lower().startswith("rtsp://")
-    cmd = [_ffmpeg_bin(), "-hide_banner", "-loglevel", "error", "-y"]
-    if is_rtsp:
-        cmd += ["-rtsp_transport", "tcp", "-stimeout", "8000000"]
-    if tail and not is_rtsp:
-        cmd += ["-sseof", "-0.8"]
-    cmd += [
-        "-i",
-        uri,
-        "-frames:v",
-        "1",
-        "-an",
-        "-vf",
-        "scale=min(1280\\,iw):-2",
-        "-f",
-        "image2pipe",
-        "-vcodec",
-        "mjpeg",
-        "-q:v",
-        "5",
-        "pipe:1",
-    ]
+        lines.append("адрес потока пустой")
+        return None, lines
+    fd, raw_path = tempfile.mkstemp(suffix=".jpg")
+    os.close(fd)
+    out_path = Path(raw_path)
+    try:
+        for label, cmd in _frame_attempts(uri, out_path, tail=tail):
+            data, note = _run_frame_attempt(cmd, out_path, timeout_sec)
+            lines.append(f"попытка {label}: {note}")
+            if data:
+                logger.info("stream frame grab ok via %s bytes=%s", label, len(data))
+                return data, lines
+        logger.warning("stream frame grab failed\n%s", "\n".join(lines))
+        return None, lines
+    finally:
+        out_path.unlink(missing_ok=True)
+
+
+def _ffmpeg_line() -> str:
+    path = _ffmpeg_bin()
+    found = Path(path).is_file() or bool(shutil.which(path))
+    if found:
+        return f"ffmpeg: {path}"
+    return f"ffmpeg: {path} — программа не найдена"
+
+
+def _frame_attempts(uri: str, out_path: Path, *, tail: bool) -> list[tuple[str, list[str]]]:
+    binary = _ffmpeg_bin()
+    head = [binary, "-hide_banner", "-loglevel", "warning", "-y"]
+    shot = ["-frames:v", "1", "-an", str(out_path)]
+    if uri.lower().startswith("rtsp://"):
+        return [
+            ("tcp", head + ["-rtsp_transport", "tcp", "-i", uri, *shot]),
+            ("udp", head + ["-rtsp_transport", "udp", "-i", uri, *shot]),
+        ]
+    lead = ["-sseof", "-0.8"] if tail else []
+    return [("файл", head + lead + ["-i", uri, *shot])]
+
+
+def _run_frame_attempt(
+    cmd: list[str], out_path: Path, timeout_sec: float
+) -> tuple[bytes | None, str]:
     try:
         res = subprocess.run(cmd, capture_output=True, timeout=timeout_sec)
-    except Exception:
-        logger.exception("stream frame grab failed")
-        return None
-    data = res.stdout or b""
-    start = data.find(b"\xff\xd8")
-    if res.returncode != 0 or start < 0:
-        err = res.stderr or b""
-        if b"rtsp://" in err.lower():
-            logger.error("stream frame grab failed rc=%s", res.returncode)
-        else:
-            logger.error(
-                "stream frame grab failed: %s",
-                err.decode("utf-8", errors="replace")[:400],
-            )
-        return None
-    frame = data[start:]
-    return frame if len(frame) > 32 else None
+    except subprocess.TimeoutExpired:
+        return None, f"таймаут {timeout_sec:.0f} с"
+    except FileNotFoundError:
+        return None, "ffmpeg не запустился"
+    except Exception as exc:
+        logger.exception("stream frame grab exception")
+        return None, redact_media_text(f"{type(exc).__name__}: {exc}")[:300]
+    err = redact_media_text(
+        (res.stderr or b"").decode("utf-8", errors="replace")
+    ).strip()
+    err = " ".join(err.split())
+    if len(err) > 500:
+        err = err[:500] + "…"
+    try:
+        data = out_path.read_bytes()
+    except OSError:
+        data = b""
+    if res.returncode == 0 and data[:2] == b"\xff\xd8" and len(data) > 32:
+        return data, f"код 0, кадр {len(data)} байт"
+    note = f"код {res.returncode}"
+    if err:
+        note = f"{note}; {err}"
+    elif data:
+        note = f"{note}; файл {len(data)} байт, это не jpeg"
+    return None, note
 
 
 def _as_float(value: Any, default: float) -> float:

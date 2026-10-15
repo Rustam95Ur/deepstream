@@ -31,6 +31,7 @@ const probe = ref<{
   height: number;
   fps: number;
   image: string;
+  debug: string;
 } | null>(null);
 const loading = ref(false);
 const creatingTest = ref(false);
@@ -352,6 +353,7 @@ onMounted(() => {
             alt="Текущий кадр потока"
           />
           <p v-else class="lede">Кадр не получен.</p>
+          <pre v-if="probe.debug" class="probe-debug">{{ probe.debug }}</pre>
         </div>
         <div class="card-foot end">
           <button type="button" class="ghost" @click="closeProbe">Закрыть</button>
