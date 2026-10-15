@@ -23,6 +23,9 @@ const router = useRouter();
 const isNew = computed(() => route.name === "camera-new");
 const cameraId = computed(() => String(route.params.id || ""));
 const missing = ref(false);
+const importFile = ref<File | null>(null);
+const importing = ref(false);
+const downloading = ref(false);
 
 const form = reactive({
   id: "",
@@ -115,10 +118,8 @@ async function onSubmit() {
   if (!uri) return;
   try {
     if (isNew.value) {
-      const id = form.id.trim() || `cam_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
       await api.upsertCamera({
-        id,
-        name: form.name.trim() || id,
+        name: form.name.trim(),
         main_uri: uri,
         enabled: form.enabled,
         enabled_triggers: selectedTriggers(),
@@ -145,25 +146,108 @@ async function onSubmit() {
     store.error = err instanceof ApiError ? err.message : "Не удалось сохранить камеру";
   }
 }
+
+function onImportPick(event: Event) {
+  const input = event.target as HTMLInputElement;
+  importFile.value = input.files?.[0] ?? null;
+}
+
+async function downloadTemplate() {
+  if (downloading.value) return;
+  downloading.value = true;
+  store.error = "";
+  try {
+    await api.downloadCamerasTemplate();
+  } catch (err) {
+    store.error = err instanceof ApiError ? err.message : "Не удалось скачать шаблон";
+  } finally {
+    downloading.value = false;
+  }
+}
+
+async function uploadImport() {
+  const file = importFile.value;
+  if (!file || importing.value) return;
+  if (!file.name.toLowerCase().endsWith(".xlsx")) {
+    store.error = "Нужен файл .xlsx";
+    return;
+  }
+  importing.value = true;
+  store.error = "";
+  try {
+    const data = await api.importCameras(file);
+    flash(`Загружено камер: ${data.created}`);
+    await refreshCameras();
+    await refreshWorker().catch(() => undefined);
+    await router.push({ name: "cameras" });
+  } catch (err) {
+    store.error = err instanceof ApiError ? err.message : "Не удалось загрузить камеры";
+  } finally {
+    importing.value = false;
+  }
+}
 </script>
 
 <template>
-  <form v-if="!missing" class="card" @submit.prevent="onSubmit">
+  <div v-if="!missing" class="stack-lg">
+    <section v-if="isNew" class="card">
+      <div class="card-head">
+        <h2>Импорт из Excel</h2>
+        <p class="lede">
+          Скачайте шаблон, заполните строки и загрузите файл. Колонку с id указывать не нужно —
+          идентификатор создаётся при загрузке. Подсказки по значениям на листе «Справка».
+        </p>
+      </div>
+      <div class="card-body">
+        <div class="ig">
+          <label class="form-label" for="cam-import">Файл Excel</label>
+          <input
+            id="cam-import"
+            class="file-input"
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            @change="onImportPick"
+          />
+          <p class="field-hint">Формат .xlsx. Пустые строки пропускаются.</p>
+        </div>
+      </div>
+      <div class="card-foot end">
+        <div class="row">
+          <button type="button" class="ghost" :disabled="downloading" @click="downloadTemplate">
+            {{ downloading ? "Скачивание…" : "Скачать шаблон" }}
+          </button>
+          <button type="button" :disabled="!importFile || importing" @click="uploadImport">
+            {{ importing ? "Загрузка…" : "Загрузить" }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+  <form class="card" @submit.prevent="onSubmit">
     <div class="card-head">
       <h2>{{ isNew ? "Новая камера" : "Изменить камеру" }}</h2>
       <p class="lede">
-        Поля как в Campus. Класс и привязка к устройству остаются в Campus.
+        Поля как в Campus.
+        <template v-if="isNew">Идентификатор камеры создаётся автоматически.</template>
+        Класс и привязка к устройству остаются в Campus.
       </p>
     </div>
     <div class="card-body form-grid">
       <Field
+        v-if="!isNew"
         id="cam-id"
         v-model="form.id"
         label="DeepStream camera id"
         addon="ID"
-        :readonly="!isNew"
+        readonly
       />
-      <Field id="cam-name" v-model="form.name" label="Название" addon="Имя" />
+      <Field
+        id="cam-name"
+        v-model="form.name"
+        label="Название"
+        addon="Имя"
+        :class="{ 'span-2': isNew }"
+      />
       <Field
         id="cam-uri"
         v-model="form.main_uri"
@@ -231,6 +315,7 @@ async function onSubmit() {
       </div>
     </div>
   </form>
+  </div>
   <section v-else class="card">
     <div class="card-head">
       <h2>Камера не найдена</h2>

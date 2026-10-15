@@ -209,3 +209,8 @@ class CameraTestBatchIn(BaseModel):
 class CameraTestBatchOut(BaseModel):
     cameras: list[CameraOut]
     created: int
+
+
+class CameraImportOut(BaseModel):
+    cameras: list[CameraOut]
+    created: int

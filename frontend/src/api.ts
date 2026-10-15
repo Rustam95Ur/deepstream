@@ -1,4 +1,4 @@
-import type { BillingCheck, Camera, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
+import type { BillingCheck, Camera, CameraImportResult, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -32,7 +32,8 @@ function formatDetail(data: unknown, fallback: string): string {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has("Content-Type")) {
+  const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !isForm && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   const res = await fetch(path, {
@@ -58,6 +59,23 @@ function qs(query: Record<string, string | number | boolean | undefined>): strin
   }
   const encoded = params.toString();
   return encoded ? `?${encoded}` : "";
+}
+
+async function downloadFile(path: string, filename: string): Promise<void> {
+  const res = await fetch(path, { credentials: "include" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(res.status, formatDetail(data, res.statusText || "Ошибка сервера"));
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export const api = {
@@ -91,6 +109,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ count, main_uri }),
     }),
+  downloadCamerasTemplate: () => downloadFile("/api/v1/cameras/import/template", "shablon-kamer.xlsx"),
+  importCameras: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<CameraImportResult>("/api/v1/cameras/import", { method: "POST", body });
+  },
   updateCamera: (id: string, body: Camera) =>
     request<Camera>(`/api/v1/cameras/${encodeURIComponent(id)}`, {
       method: "PUT",

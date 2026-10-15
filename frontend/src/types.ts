@@ -76,6 +76,11 @@ export interface CameraTestBatch {
   created: number;
 }
 
+export interface CameraImportResult {
+  cameras: Camera[];
+  created: number;
+}
+
 export interface CameraQuery {
   q?: string;
   enabled?: boolean;

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
 
 from app.api import CameraApiAuth, LicenseAuth
 from app.schemas import (
+    CameraImportOut,
     CameraIn,
     CameraListOut,
     CameraOut,
@@ -41,6 +42,31 @@ def list_cameras(
         cursor=cursor,
         limit=limit,
     )
+
+
+@router.get("/import/template")
+def download_camera_import_template() -> Response:
+    payload = cameras_svc.camera_import_template()
+    return Response(
+        content=payload,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="shablon-kamer.xlsx"'},
+    )
+
+
+@router.post(
+    "/import",
+    response_model=CameraImportOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def import_cameras(file: UploadFile = File(...)) -> CameraImportOut:
+    name = (file.filename or "").lower()
+    if name and not name.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="нужен файл .xlsx")
+    raw = file.file.read(2_000_001)
+    if len(raw) > 2_000_000:
+        raise HTTPException(status_code=400, detail="файл больше 2 МБ")
+    return cameras_svc.import_cameras_xlsx(raw)
 
 
 @router.post(

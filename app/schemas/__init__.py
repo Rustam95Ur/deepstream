@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.schemas.cameras import (
+    CameraImportOut,
     CameraIn,
     CameraListOut,
     CameraOut,
@@ -51,6 +52,7 @@ from app.schemas.webhooks import (
 __all__ = [
     "BillingCheckOut",
     "BillingValidateIn",
+    "CameraImportOut",
     "CameraIn",
     "CameraListOut",
     "CameraOut",

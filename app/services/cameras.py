@@ -10,11 +10,18 @@ from fastapi import HTTPException
 
 from app.paging import cursor_id, cursor_or_400
 from app.schemas import (
+    CameraImportOut,
     CameraIn,
     CameraListOut,
     CameraOut,
     CameraPatch,
     CameraTestBatchOut,
+)
+from app.services.camera_import import (
+    CameraWorkbookError,
+    parse_workbook,
+    rejection_message,
+    template_bytes,
 )
 from app.storage import Store, get_store
 from app.timeutil import aware
@@ -140,6 +147,52 @@ def list_cameras(
         updated_at=updated,
         next_cursor=next_cursor,
     )
+
+
+def camera_import_template() -> bytes:
+    return template_bytes()
+
+
+def import_cameras_xlsx(raw: bytes) -> CameraImportOut:
+    try:
+        parsed = parse_workbook(raw)
+    except CameraWorkbookError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if parsed.errors:
+        raise HTTPException(status_code=400, detail=rejection_message(parsed.errors))
+    store = get_store()
+    settings = store.get_settings()
+    existing = {cam.id for cam in store.list_cameras()}
+    free = settings.max_streams - len(existing)
+    count = len(parsed.cameras)
+    if count > max(0, free):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"max_streams={settings.max_streams}, "
+                f"свободно слотов: {max(0, free)}, в файле камер: {count}"
+            ),
+        )
+    ids = _fresh_ids(store, count, existing)
+    payloads = [
+        with_id(store, body, camera_id=cam_id)
+        for body, cam_id in zip(parsed.cameras, ids, strict=True)
+    ]
+    guard_capacity(store, {item.id for item in payloads})
+    cams, created_n, _updated_n = store.upsert_many(payloads)
+    notify_reload()
+    return CameraImportOut(cameras=cams, created=created_n)
+
+
+def _fresh_ids(store: Store, count: int, existing: set[str]) -> list[str]:
+    ids: list[str] = []
+    seen = set(existing)
+    while len(ids) < count:
+        cam_id = store.new_camera_id()
+        if cam_id not in seen:
+            seen.add(cam_id)
+            ids.append(cam_id)
+    return ids
 
 
 def create_test_batch(*, main_uri: str, count: int) -> CameraTestBatchOut:

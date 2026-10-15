@@ -13,7 +13,7 @@ const userOpen = ref(false);
 const titles: Record<string, { title: string; desc: string }> = {
   overview: { title: "Обзор", desc: "Статус pipeline и ноды" },
   cameras: { title: "Камеры", desc: "Потоки на этой ноде" },
-  "camera-new": { title: "Новая камера", desc: "Добавление потока" },
+  "camera-new": { title: "Новая камера", desc: "Одна камера или список из Excel" },
   "camera-edit": { title: "Изменить камеру", desc: "Параметры потока" },
   settings: { title: "Настройки", desc: "Идентификация и лимиты" },
   ingest: { title: "Связь", desc: "Входящий API камер и исходящие webhook’и" },
