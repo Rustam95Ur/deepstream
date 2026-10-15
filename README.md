@@ -1,11 +1,11 @@
 # Nexus DeepStream
 
 Standalone DeepStream first-line node: FastAPI control plane + GPU pipeline.
-One Django Campus can attach multiple nodes (different GPUs / machines).
+One Campus can attach multiple nodes (different GPUs / machines).
 
 ## Features
 
-- Local camera registry (`GET/POST/PUT/PATCH/DELETE /api/v1/cameras`) — Django pushes and pulls like SmartBox channels
+- Local camera registry (`GET/POST/PUT/PATCH/DELETE /api/v1/cameras`) — Campus and the console push and pull cameras the same way as SmartBox channels
 - Settings UI at `/` (Vue SPA behind nginx in Docker)
 - Multiple webhooks: retries, dead-letter queue, resend from history
 - Incident clip from the RTSP ring-buffer; incident webhooks POST `multipart/form-data` (`payload` JSON + `video` MP4). No clip → webhook is not sent.
@@ -143,34 +143,37 @@ Hot path (probe thread) never waits on the network or the database:
 
 See `.env.example` for pool, queue, and cache knobs.
 
-## API (for Django)
+## HTTP API
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/v1/health` | node status |
 | GET | `/api/v1/cameras` | list cameras (`q`, `enabled`, `since`, `until`, `cursor`, `limit`; omit `limit` for the full list) |
+| GET | `/api/v1/cameras/import/template` | Excel template (`shablon-kamer.xlsx`) |
+| POST | `/api/v1/cameras/import` | import cameras from `.xlsx` (max 2 MB) |
+| POST | `/api/v1/cameras/test-batch` | create test cameras `{main_uri, count}` |
 | GET | `/api/v1/cameras/{id}` | one camera |
 | POST | `/api/v1/cameras` | upsert one camera (`201` created / `200` updated). Aliases: `camera_id`, `rtsp_url`, `uri` |
 | PUT | `/api/v1/cameras/{id}` | upsert by id (creates if missing) |
 | PATCH | `/api/v1/cameras/{id}` | partial update |
 | DELETE | `/api/v1/cameras/{id}` | remove |
-| GET/PUT | `/api/v1/settings` | node settings |
+| GET/PUT/PATCH | `/api/v1/settings` | node settings (PATCH is partial) |
 | GET | `/api/v1/billing` | last Nexus Billing key check (serial, valid, reason) |
 | POST | `/api/v1/billing/validate` | POST key + motherboard serial to `billing_url` |
-
-If the key is missing or invalid, the node locks: pipeline and ring-buffer stop, outbound webhooks and public clips are refused, camera/history/user APIs return `403`. Login and **Settings** stay open so the key can be fixed. `/health` stays `200` and reports `license_valid`.
-
-If the API key equals `NEXUS_DS_ADMIN_LICENSE_KEY` (default `NEXUS-DEEPSTREAM-ADMIN`), the node unlocks without calling Billing.
-
-If billing returns `stolen_key` with `destroy: true` (wrong motherboard serial for this key), the API/video containers tear down **all containers of this compose project** via the mounted Docker socket (`docker.sock`). Volumes are kept.
+| GET | `/api/v1/worker` | pipeline worker status |
+| POST | `/api/v1/worker/start` | start the GPU pipeline |
+| POST | `/api/v1/worker/stop` | stop the GPU pipeline |
+| POST | `/api/v1/worker/reload` | reload cameras and settings into the video process |
 | GET | `/api/v1/video/health` | GPU pipeline + per-camera ring-buffer health |
 | GET/POST | `/api/v1/webhooks` | webhook list / create `{name, url, enabled, login, password, timeout_sec, max_retries}` |
+| POST | `/api/v1/webhooks/sync-cameras` | push the local camera list to each enabled webhook |
 | PUT/DELETE | `/api/v1/webhooks/{id}` | update / remove webhook |
 | GET | `/api/v1/auth/session` | UI session status |
 | POST | `/api/v1/auth/login` | UI session cookie (`email` + `password`; first user also sends `password_confirm`) |
 | POST | `/api/v1/auth/logout` | clear UI cookie |
 | GET | `/api/v1/users` | list console users (`q`, `since`, `until`, `cursor`, `limit`) |
 | POST | `/api/v1/users` | create user `{email, password, name}` |
+| GET/PUT | `/api/v1/users/{id}` | one console user / update |
 | DELETE | `/api/v1/users/{id}` | remove user |
 | GET | `/api/v1/history/triggers` | trigger history page `{items, next_cursor}` |
 | GET | `/api/v1/history/triggers/{event_id}` | one event + full payload |
@@ -180,9 +183,15 @@ If billing returns `stolen_key` with `destroy: true` (wrong motherboard serial f
 | GET | `/api/v1/history/outbound` | webhook job queue (`status=dead` for failures) |
 | POST | `/api/v1/history/outbound/{id}/retry` | reset a job and send again |
 
+If the key is missing or invalid, the node locks: pipeline and ring-buffer stop, outbound webhooks and public clips are refused, camera/history/user APIs return `403`. Login and **Settings** stay open so the key can be fixed. `/health` stays `200` and reports `license_valid`.
+
+If the API key equals `NEXUS_DS_ADMIN_LICENSE_KEY` (default `NEXUS-DEEPSTREAM-ADMIN`), the node unlocks without calling Billing.
+
+If billing returns `stolen_key` with `destroy: true` (wrong motherboard serial for this key), the API/video containers tear down **all containers of this compose project** via the mounted Docker socket (`docker.sock`). Volumes are kept.
+
 If a webhook has a login and password, Campus sends them on the inbound camera API as HTTP Basic (`Authorization: Basic base64(login:password)`). The Vue UI logs in with email/password and uses an httpOnly cookie. The first visit with an empty `users` table creates the initial operator.
 
-Django (or any other service) owns the camera on its side, then **pushes** it to this node:
+Campus (or any other HTTP client) owns the camera on its side, then **pushes** it to this node:
 
 ```http
 POST /api/v1/cameras
@@ -204,13 +213,13 @@ Content-Type: application/json
 }
 ```
 
-`main_uri`, `uri`, and `rtsp_url` are the same field. The node also answers `GET /api/v1/cameras` so Campus can import like a SmartBox `channel/list`. Outbound webhooks are the other direction: this node POSTs SmartBox-shaped alerts to Django `POST /api/v1/school/incident-ingest/`. Campus selects SmartBox vs Nexus DeepStream by the camera’s device. `INCIDENT_FIRST_LINE` is not used.
+`main_uri`, `uri`, and `rtsp_url` are the same field. The node also answers `GET /api/v1/cameras` so Campus can import like a SmartBox `channel/list`. Outbound webhooks are the other direction: this node POSTs SmartBox-shaped alerts to `POST /api/v1/school/incident-ingest/`. Campus selects SmartBox vs Nexus DeepStream by the camera’s device. `INCIDENT_FIRST_LINE` is not used.
 
 ### Trigger payload (POST to each webhook)
 
 Same envelope as a SmartBox device. Point the webhook at Campus ingest:
 
-`https://<campus>/api/v1/school/incident-ingest/`
+`https://<campus>/api/v1/incidents/`
 
 Campus matches the camera by `channel_info.ipc_addr` ⊂ `Camera.rtsp_url`, else exact `channel_info.channel_name` = `Camera.name`. Keep those names/URLs in sync.
 
@@ -263,12 +272,13 @@ Do **not** put MinIO `127.0.0.1:9200` in `video_url`. Campus is another containe
 
 Two servers: `NEXUS_DS_PUBLIC_URL=http://<deepstream-lan-ip>:8080`. Recreate api+video after changing it. Already-ingested Campus rows keep the old URL; resend from History.
 
-## Multi-node with one Django
+## Multi-node
 
 1. Deploy node A (`node_id=ds-1`) and node B (`node_id=ds-2`).
 2. On each node add a webhook (URL + login/password for inbound camera API) → same Campus `incident-ingest` endpoint.
-3. Campus creates/updates a camera locally, then `POST/PUT /api/v1/cameras` on the chosen node. Campus can also `GET /api/v1/cameras` to import.
-4. Later in Campus: model `DeepStreamNode` + import cameras (create/update) + reject if camera already on another node.
+3. Campus creates or updates a camera, then `POST`/`PUT /api/v1/cameras` on the chosen node. Campus can also `GET /api/v1/cameras` to import.
+4. The other direction is `POST /api/v1/webhooks/sync-cameras`: the node posts its local list to Campus `POST /api/v1/cameras/sync` (URL is derived from the webhook).
+5. Keep one camera on one node. The same camera on two nodes delivers the same incident twice.
 
 ## Move to its own git repo
 

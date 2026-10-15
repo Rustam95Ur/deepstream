@@ -363,8 +363,8 @@ python -m app.cli settings set billing_api_key=XXXX --reveal</code></pre>
         </p>
         <div class="cmd"><button class="copy" type="button">Копировать</button>
           <pre><code>python -m app.cli webhooks list
-python -m app.cli webhooks add --name campus --url https://campus.example/api/v1/school/incident-ingest/ --login node1 --password 'secret-pass'
-python -m app.cli webhooks update WEBHOOK_ID --url https://campus.example/api/v1/school/incident-ingest/ --retries 8
+python -m app.cli webhooks add --name campus --url https://campus.example/api/v1/incidents/ --login node1 --password 'secret-pass'
+python -m app.cli webhooks update WEBHOOK_ID --url https://campus.example/api/v1/incidents/ --retries 8
 python -m app.cli webhooks disable WEBHOOK_ID
 python -m app.cli webhooks enable WEBHOOK_ID
 python -m app.cli webhooks delete WEBHOOK_ID --yes</code></pre>

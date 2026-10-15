@@ -316,7 +316,7 @@ Content-Type: application/json
             label="URL"
             addon="POST"
             required
-            hint="Campus: /api/v1/school/incident-ingest/"
+            hint="Campus: /api/v1/incidents/"
           />
           <Field id="wh-login" v-model="form.login" label="Логин" :required="!editingId" autocomplete="username" />
           <Field

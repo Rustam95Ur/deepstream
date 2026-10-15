@@ -1,4 +1,4 @@
-"""Cameras CRUD for the console and machine clients (Django / SmartBox-style)."""
+"""Cameras CRUD for the console and machine clients (Campus / SmartBox-style)."""
 
 from __future__ import annotations
 

@@ -84,7 +84,7 @@ RTSP → [video] ring_buffer + pipeline.probe
          → TriggerEngine → AsyncSink → ClipSink / OutboundEnqueueSink
          → HistoryWriter + OutboundWorker → Campus
 
-Django/UI → [api] FastAPI → Store / webhooks / billing
+Campus / UI → [api] FastAPI → Store / webhooks / billing
          → video_client → :8081 (reload, lock)
 ```
 

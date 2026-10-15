@@ -27,7 +27,7 @@ _EXAMPLES = """
   python -m app.cli cameras list
   python -m app.cli cameras add --name Калитка --uri rtsp://10.0.0.12/stream1
   python -m app.cli settings set max_streams=8 enable_clip_record=true
-  python -m app.cli webhooks add --name campus --url https://campus.example/api/v1/school/incident-ingest/ --login node1
+  python -m app.cli webhooks add --name campus --url https://campus.example/api/v1/incidents/ --login node1
   docker exec -it nexus-deepstream-api python -m app.cli cameras list
 
 Справка в браузере: /cli.html  (файл docs/cli.html)
