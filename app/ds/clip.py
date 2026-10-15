@@ -38,6 +38,11 @@ def _ffmpeg_bin() -> str:
     return "ffmpeg"
 
 
+def ffmpeg_available() -> bool:
+    path = _ffmpeg_bin()
+    return Path(path).is_file() or bool(shutil.which(path))
+
+
 def _acquire_event_lock(event_id: str) -> bool:
     now = time.monotonic()
     with _event_locks_mu:

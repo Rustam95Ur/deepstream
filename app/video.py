@@ -17,7 +17,13 @@ from app.ds.log_buffer import snapshot as log_snapshot
 from app.ds.ring_buffer import get_ring_buffer
 from app.history import get_history_writer
 from app.logging_config import bind_context, configure_logging, log_extra
-from app.schemas import LogLineOut, RingCameraHealthOut, VideoHealthOut, WorkerStatusOut
+from app.schemas import (
+    CameraProbeOut,
+    LogLineOut,
+    RingCameraHealthOut,
+    VideoHealthOut,
+    WorkerStatusOut,
+)
 from app.minio_store import advertised_public_base
 from app.storage import get_store
 from app.video_auth import require_video_token, video_token
@@ -240,6 +246,17 @@ def worker_reload() -> WorkerStatusOut:
 @app.get("/video/health", response_model=VideoHealthOut, dependencies=[VideoAuth])
 def get_video_health() -> VideoHealthOut:
     return video_health()
+
+
+@app.post(
+    "/cameras/{camera_id}/frame",
+    response_model=CameraProbeOut,
+    dependencies=[VideoAuth],
+)
+def camera_frame(camera_id: str) -> CameraProbeOut:
+    from app.services.camera_probe import probe_current_stream_local
+
+    return probe_current_stream_local(camera_id)
 
 
 def main() -> None:

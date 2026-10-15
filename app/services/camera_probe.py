@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import time
 
-from app.ds.clip import grab_jpeg, recent_ring_segments
+from app.ds.clip import ffmpeg_available, grab_jpeg, recent_ring_segments
 from app.ds.config import CameraConfig
 from app.ds.rtsp import probe_video
 from app.schemas import CameraProbeOut
@@ -16,6 +16,36 @@ _RING_FRESH_S = 20.0
 
 
 def probe_current_stream(camera_id: str) -> CameraProbeOut:
+    if not ffmpeg_available():
+        remote, note = _probe_on_video(camera_id)
+        if remote is not None:
+            prefix = "снято в video-контейнере, в API нет ffmpeg"
+            remote.debug = "\n".join(part for part in (prefix, remote.debug) if part)
+            return remote
+        local = _probe_local(camera_id)
+        if note:
+            local.debug = "\n".join(part for part in (note, local.debug) if part)
+        return local
+    return _probe_local(camera_id)
+
+
+def _probe_on_video(camera_id: str) -> tuple[CameraProbeOut | None, str]:
+    from app.video_client import probe_camera_frame, video_configured
+
+    if not video_configured():
+        return None, "video-контейнер не настроен, а локального ffmpeg нет"
+    try:
+        return probe_camera_frame(camera_id), ""
+    except Exception as exc:
+        logger_note = f"video-контейнер не снял кадр: {exc}"
+        return None, logger_note
+
+
+def probe_current_stream_local(camera_id: str) -> CameraProbeOut:
+    return _probe_local(camera_id)
+
+
+def _probe_local(camera_id: str) -> CameraProbeOut:
     cam = get_camera(camera_id)
     configs = _configs()
     spec = configs.get(cam.id) or CameraConfig(

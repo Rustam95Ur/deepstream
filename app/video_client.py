@@ -202,6 +202,19 @@ def notify_reload() -> WorkerStatusOut | None:
         return None
 
 
+def probe_camera_frame(camera_id: str) -> CameraProbeOut:
+    from urllib.parse import quote
+
+    from app.schemas import CameraProbeOut
+
+    raw = _request(
+        "POST",
+        f"/cameras/{quote(camera_id, safe='')}/frame",
+        timeout=45.0,
+    )
+    return CameraProbeOut.model_validate(raw)
+
+
 def video_health() -> VideoHealthOut:
     if not video_configured():
         return _offline_health("video container is not configured")

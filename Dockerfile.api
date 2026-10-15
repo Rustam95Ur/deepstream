@@ -13,9 +13,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/nexus_deepstream
 
+COPY --from=mwader/static-ffmpeg:7.1 /ffmpeg /usr/local/bin/ffmpeg
+COPY --from=mwader/static-ffmpeg:7.1 /ffprobe /usr/local/bin/ffprobe
+
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       bash ca-certificates \
+    && chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe \
+    && /usr/local/bin/ffmpeg -hide_banner -version \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml poetry.lock /opt/nexus_deepstream/
