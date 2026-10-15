@@ -21,6 +21,17 @@ const router = useRouter();
 const pendingDelete = ref<Camera | null>(null);
 const toggling = ref("");
 const sendingWebhook = ref("");
+const checking = ref("");
+const probeCamera = ref<Camera | null>(null);
+const probe = ref<{
+  ok: boolean;
+  detail: string;
+  codec: string;
+  width: number;
+  height: number;
+  fps: number;
+  image: string;
+} | null>(null);
 const loading = ref(false);
 const creatingTest = ref(false);
 const rows = ref<Camera[]>([]);
@@ -125,6 +136,35 @@ async function toggleEnabled(cam: Camera, enabled: boolean) {
   }
 }
 
+function closeProbe() {
+  probe.value = null;
+  probeCamera.value = null;
+}
+
+function probeFacts(row: NonNullable<typeof probe.value>) {
+  const parts: string[] = [];
+  if (row.width && row.height) parts.push(`${row.width}×${row.height}`);
+  if (row.fps) parts.push(`${row.fps} кадр/с`);
+  if (row.codec) parts.push(row.codec);
+  return parts.join(" · ");
+}
+
+async function checkStream(cam: Camera) {
+  if (checking.value) return;
+  checking.value = cam.id;
+  store.error = "";
+  try {
+    probeCamera.value = cam;
+    probe.value = await api.probeCamera(cam.id);
+  } catch (err) {
+    probeCamera.value = null;
+    probe.value = null;
+    store.error = err instanceof ApiError ? err.message : "Не удалось проверить поток";
+  } finally {
+    checking.value = "";
+  }
+}
+
 async function sendWebhook(cam: Camera) {
   if (sendingWebhook.value) return;
   sendingWebhook.value = cam.id;
@@ -213,7 +253,8 @@ onMounted(() => {
       <div class="card-head">
         <h2>Реестр ({{ rows.length }})</h2>
         <p class="lede">
-          Статус применяется сразу. «Отправить в вебхук» снимает текущий поток и ставит его в очередь как инцидент.
+          Статус применяется сразу. «Проверить текущий поток» показывает текущий кадр.
+          «Отправить в вебхук» ставит этот поток в очередь как инцидент.
         </p>
       </div>
       <div class="card-body">
@@ -258,6 +299,13 @@ onMounted(() => {
                     <button
                       type="button"
                       class="ghost"
+                      :disabled="!!checking"
+                      :aria-label="`Проверить текущий поток камеры ${c.id}`"
+                      @click="checkStream(c)"
+                    >{{ checking === c.id ? "Проверка…" : "Проверить текущий поток" }}</button>
+                    <button
+                      type="button"
+                      class="ghost"
                       :disabled="!!sendingWebhook"
                       :aria-label="`Отправить поток камеры ${c.id} в вебхук`"
                       @click="sendWebhook(c)"
@@ -289,6 +337,27 @@ onMounted(() => {
         />
       </div>
     </section>
+
+    <div v-if="probe && probeCamera" class="modal-scrim" @click.self="closeProbe">
+      <section class="card modal modal-video" role="dialog" aria-modal="true" aria-labelledby="probe-title">
+        <div class="card-head">
+          <h2 id="probe-title">{{ probeCamera.name || probeCamera.id }}</h2>
+          <p class="lede">{{ probe.detail }}<template v-if="probeFacts(probe)"> · {{ probeFacts(probe) }}</template></p>
+        </div>
+        <div class="card-body">
+          <img
+            v-if="probe.image"
+            class="clip-player"
+            :src="`data:image/jpeg;base64,${probe.image}`"
+            alt="Текущий кадр потока"
+          />
+          <p v-else class="lede">Кадр не получен.</p>
+        </div>
+        <div class="card-foot end">
+          <button type="button" class="ghost" @click="closeProbe">Закрыть</button>
+        </div>
+      </section>
+    </div>
 
     <div v-if="pendingDelete" class="modal-scrim" @click.self="pendingDelete = null">
       <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="del-title">

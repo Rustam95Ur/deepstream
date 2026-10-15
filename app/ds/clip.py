@@ -482,6 +482,85 @@ def _ffmpeg_ok(cmd: list[str], timeout: float) -> bool:
     return True
 
 
+def recent_ring_segments(
+    camera: CameraConfig,
+    cameras: dict[str, CameraConfig],
+    *,
+    limit: int = 3,
+) -> list[Path]:
+    ring = _ring_for_camera(camera, cameras)
+    if ring is None:
+        return []
+    out_dir, prefix = ring
+    try:
+        files = [
+            path
+            for path in out_dir.iterdir()
+            if path.is_file()
+            and path.suffix.lower() == ".mp4"
+            and path.name.startswith(prefix)
+        ]
+    except FileNotFoundError:
+        return []
+    files.sort(key=_mtime, reverse=True)
+    return files[:limit]
+
+
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def grab_jpeg(source: str, *, tail: bool = False, timeout_sec: float = 12.0) -> bytes | None:
+    """One JPEG frame from a live URI or a local file."""
+    uri = (source or "").strip()
+    if not uri:
+        return None
+    is_rtsp = uri.lower().startswith("rtsp://")
+    cmd = [_ffmpeg_bin(), "-hide_banner", "-loglevel", "error", "-y"]
+    if is_rtsp:
+        cmd += ["-rtsp_transport", "tcp", "-stimeout", "8000000"]
+    if tail and not is_rtsp:
+        cmd += ["-sseof", "-0.8"]
+    cmd += [
+        "-i",
+        uri,
+        "-frames:v",
+        "1",
+        "-an",
+        "-vf",
+        "scale=min(1280\\,iw):-2",
+        "-f",
+        "image2pipe",
+        "-vcodec",
+        "mjpeg",
+        "-q:v",
+        "5",
+        "pipe:1",
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, timeout=timeout_sec)
+    except Exception:
+        logger.exception("stream frame grab failed")
+        return None
+    data = res.stdout or b""
+    start = data.find(b"\xff\xd8")
+    if res.returncode != 0 or start < 0:
+        err = res.stderr or b""
+        if b"rtsp://" in err.lower():
+            logger.error("stream frame grab failed rc=%s", res.returncode)
+        else:
+            logger.error(
+                "stream frame grab failed: %s",
+                err.decode("utf-8", errors="replace")[:400],
+            )
+        return None
+    frame = data[start:]
+    return frame if len(frame) > 32 else None
+
+
 def _as_float(value: Any, default: float) -> float:
     try:
         if value is None or str(value).strip() == "":

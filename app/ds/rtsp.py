@@ -85,6 +85,83 @@ def probe_codec(rtsp_url: str, *, timeout_sec: float = 6.0) -> CodecName | None:
     return None
 
 
+def probe_video(source: str, *, timeout_sec: float = 8.0) -> dict[str, object]:
+    """Read codec, size and fps from the first video stream. Empty dict on failure."""
+    ffprobe = _ffprobe()
+    uri = (source or "").strip()
+    if not ffprobe or not uri:
+        return {}
+    safe = sanitize_rtsp_url(uri) if uri.lower().startswith("rtsp://") else uri
+    cmd = [
+        ffprobe,
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height,avg_frame_rate,r_frame_rate",
+        "-of",
+        "json",
+    ]
+    if safe.lower().startswith("rtsp://"):
+        cmd[3:3] = ["-rtsp_transport", "tcp", "-timeout", str(int(timeout_sec * 1_000_000))]
+    cmd += ["-i", safe]
+    try:
+        out = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=timeout_sec + 3,
+            text=True,
+            check=False,
+        )
+        data = json.loads(out.stdout or "{}")
+        stream = (data.get("streams") or [{}])[0]
+    except Exception:
+        logger.debug("ffprobe stream failed", exc_info=True)
+        return {}
+    if not isinstance(stream, dict):
+        return {}
+    codec = str(stream.get("codec_name") or "").strip().lower()
+    width = _positive_int(stream.get("width"))
+    height = _positive_int(stream.get("height"))
+    fps = _frame_rate(stream.get("avg_frame_rate")) or _frame_rate(stream.get("r_frame_rate"))
+    if not codec and not width and not height:
+        return {}
+    return {"codec": codec, "width": width, "height": height, "fps": fps}
+
+
+def _positive_int(value: object) -> int:
+    try:
+        number = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+    return number if number > 0 else 0
+
+
+def _frame_rate(value: object) -> float:
+    text = str(value or "").strip()
+    if not text or text in {"0/0", "N/A"}:
+        return 0.0
+    if "/" in text:
+        left, right = text.split("/", 1)
+        try:
+            den = float(right)
+            num = float(left)
+        except ValueError:
+            return 0.0
+        if den == 0:
+            return 0.0
+        rate = num / den
+    else:
+        try:
+            rate = float(text)
+        except ValueError:
+            return 0.0
+    if rate <= 0 or rate > 240:
+        return 0.0
+    return round(rate, 2)
+
+
 def resolve_codec(
     rtsp_url: str, camera_name: str, default: CodecName = "h265"
 ) -> CodecName:

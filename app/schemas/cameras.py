@@ -219,3 +219,13 @@ class CameraImportOut(BaseModel):
 class CameraWebhookOut(BaseModel):
     event_id: str
     queued: int
+
+
+class CameraProbeOut(BaseModel):
+    ok: bool
+    detail: str
+    codec: str = ""
+    width: int = 0
+    height: int = 0
+    fps: float = 0
+    image: str = ""

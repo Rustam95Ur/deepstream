@@ -16,8 +16,10 @@ from app.schemas import (
     CameraTestBatchIn,
     CameraTestBatchOut,
     CameraWebhookOut,
+    CameraProbeOut,
 )
 from app.services import cameras as cameras_svc
+from app.services.camera_probe import probe_current_stream
 from app.services.camera_webhook import send_current_stream
 
 router = APIRouter(
@@ -78,6 +80,11 @@ def import_cameras(file: UploadFile = File(...)) -> CameraImportOut:
 )
 def create_test_cameras(body: CameraTestBatchIn) -> CameraTestBatchOut:
     return cameras_svc.create_test_batch(main_uri=body.main_uri, count=body.count)
+
+
+@router.post("/{camera_id}/probe", response_model=CameraProbeOut)
+def probe_camera_stream(camera_id: str) -> CameraProbeOut:
+    return probe_current_stream(camera_id)
 
 
 @router.post("/{camera_id}/webhook", response_model=CameraWebhookOut)

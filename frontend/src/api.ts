@@ -135,6 +135,16 @@ export const api = {
       `/api/v1/cameras/${encodeURIComponent(id)}/webhook`,
       { method: "POST" },
     ),
+  probeCamera: (id: string) =>
+    request<{
+      ok: boolean;
+      detail: string;
+      codec: string;
+      width: number;
+      height: number;
+      fps: number;
+      image: string;
+    }>(`/api/v1/cameras/${encodeURIComponent(id)}/probe`, { method: "POST" }),
   worker: () => request<WorkerStatus>("/api/v1/worker"),
   videoHealth: () => request<VideoHealth>("/api/v1/video/health"),
   workerStart: () => request<WorkerStatus>("/api/v1/worker/start", { method: "POST" }),

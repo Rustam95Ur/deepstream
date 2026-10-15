@@ -11,6 +11,7 @@ from app.schemas.cameras import (
     CameraTestBatchIn,
     CameraTestBatchOut,
     CameraWebhookOut,
+    CameraProbeOut,
 )
 from app.schemas.history import (
     ClipOut,
@@ -64,6 +65,7 @@ __all__ = [
     "CameraTestBatchIn",
     "CameraTestBatchOut",
     "CameraWebhookOut",
+    "CameraProbeOut",
     "ClipOut",
     "ClipUrlOut",
     "HealthOut",
