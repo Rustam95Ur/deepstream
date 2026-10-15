@@ -20,6 +20,7 @@ const ENABLED_OPTS = [
 const router = useRouter();
 const pendingDelete = ref<Camera | null>(null);
 const toggling = ref("");
+const sendingWebhook = ref("");
 const loading = ref(false);
 const creatingTest = ref(false);
 const rows = ref<Camera[]>([]);
@@ -124,6 +125,20 @@ async function toggleEnabled(cam: Camera, enabled: boolean) {
   }
 }
 
+async function sendWebhook(cam: Camera) {
+  if (sendingWebhook.value) return;
+  sendingWebhook.value = cam.id;
+  store.error = "";
+  try {
+    const data = await api.sendCameraWebhook(cam.id);
+    flash(`Поток отправлен в вебхук: ${data.queued}`);
+  } catch (err) {
+    store.error = err instanceof ApiError ? err.message : "Не удалось отправить в вебхук";
+  } finally {
+    sendingWebhook.value = "";
+  }
+}
+
 async function confirmDelete() {
   const cam = pendingDelete.value;
   if (!cam) return;
@@ -197,7 +212,9 @@ onMounted(() => {
     <section class="card">
       <div class="card-head">
         <h2>Реестр ({{ rows.length }})</h2>
-        <p class="lede">Статус применяется сразу. Разрешение и FPS приходят из Campus при синке.</p>
+        <p class="lede">
+          Статус применяется сразу. «Отправить в вебхук» снимает текущий поток и ставит его в очередь как инцидент.
+        </p>
       </div>
       <div class="card-body">
         <div v-if="rows.length" class="table-wrap">
@@ -238,6 +255,13 @@ onMounted(() => {
                       :aria-label="`Изменить камеру ${c.id}`"
                       @click="router.push({ name: 'camera-edit', params: { id: c.id } })"
                     >Изменить</button>
+                    <button
+                      type="button"
+                      class="ghost"
+                      :disabled="!!sendingWebhook"
+                      :aria-label="`Отправить поток камеры ${c.id} в вебхук`"
+                      @click="sendWebhook(c)"
+                    >{{ sendingWebhook === c.id ? "Отправка…" : "Отправить в вебхук" }}</button>
                     <button
                       type="button"
                       class="ghost danger"

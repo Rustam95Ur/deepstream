@@ -130,6 +130,11 @@ export const api = {
     }),
   deleteCamera: (id: string) =>
     request<void>(`/api/v1/cameras/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  sendCameraWebhook: (id: string) =>
+    request<{ event_id: string; queued: number }>(
+      `/api/v1/cameras/${encodeURIComponent(id)}/webhook`,
+      { method: "POST" },
+    ),
   worker: () => request<WorkerStatus>("/api/v1/worker"),
   videoHealth: () => request<VideoHealth>("/api/v1/video/health"),
   workerStart: () => request<WorkerStatus>("/api/v1/worker/start", { method: "POST" }),

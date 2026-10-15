@@ -213,7 +213,7 @@ Content-Type: application/json
 }
 ```
 
-`main_uri`, `uri`, and `rtsp_url` are the same field. The node also answers `GET /api/v1/cameras` so Campus can import like a SmartBox `channel/list`. Outbound webhooks are the other direction: this node POSTs SmartBox-shaped alerts to `POST /api/v1/school/incident-ingest/`. Campus selects SmartBox vs Nexus DeepStream by the camera’s device. `INCIDENT_FIRST_LINE` is not used.
+`main_uri`, `uri`, and `rtsp_url` are the same field. The node also answers `GET /api/v1/cameras` so Campus can import like a SmartBox `channel/list`. Outbound webhooks are the other direction: this node POSTs the same SmartBox-shaped envelope to Campus `POST /api/v1/incidents/`.
 
 ### Trigger payload (POST to each webhook)
 
@@ -221,9 +221,9 @@ Same envelope as a SmartBox device. Point the webhook at Campus ingest:
 
 `https://<campus>/api/v1/incidents/`
 
-Campus matches the camera by `channel_info.ipc_addr` ⊂ `Camera.rtsp_url`, else exact `channel_info.channel_name` = `Camera.name`. Keep those names/URLs in sync.
+Campus matches the node by `device_info.device_sn` = `Device.external_id` (this node's `node_id`) and the camera by `channel_info.channel_id` = `Camera.external_cam_id`. The node sets `device_sn` from `node_id` and `channel_id` from the local camera id. Keep those ids in sync.
 
-`vif` / `convergence` → `Драки`. `fall` → `Падение`. `smoke` → `Курение`. `presence` stays `presence`. `stream_silent` has no `algo_model` → `SmartBoxLog` (JSON only, no video).
+`vif` / `convergence` → `Драки`. `fall` → `Падение`. `smoke` → `Курение`. `presence` is sent as `presence`. `stream_silent` has no `algo_model`, so Campus stores an ingest log, not an incident (JSON only, no video).
 
 **Incidents always send the MP4.** The node waits `post_s`, concatenates ring-buffer segments covering `[trigger - pre_s, trigger + post_s]`, uploads to MinIO when configured, then POSTs `multipart/form-data`:
 
@@ -242,6 +242,7 @@ Without a clip the webhook is skipped (history still records the trigger). `stre
     "device_info": {"device_name": "ds-1", "device_sn": "ds-1"},
     "channel_info": {
       "channel_name": "Калитка",
+      "channel_id": "cam_gate",
       "ipc_addr": "10.0.0.12/stream1"
     },
     "behaviour": {
@@ -275,7 +276,7 @@ Two servers: `NEXUS_DS_PUBLIC_URL=http://<deepstream-lan-ip>:8080`. Recreate api
 ## Multi-node
 
 1. Deploy node A (`node_id=ds-1`) and node B (`node_id=ds-2`).
-2. On each node add a webhook (URL + login/password for inbound camera API) → same Campus `incident-ingest` endpoint.
+2. On each node add a webhook (URL + login/password for inbound camera API) → the same Campus `POST /api/v1/incidents/`.
 3. Campus creates or updates a camera, then `POST`/`PUT /api/v1/cameras` on the chosen node. Campus can also `GET /api/v1/cameras` to import.
 4. The other direction is `POST /api/v1/webhooks/sync-cameras`: the node posts its local list to Campus `POST /api/v1/cameras/sync` (URL is derived from the webhook).
 5. Keep one camera on one node. The same camera on two nodes delivers the same incident twice.

@@ -20,6 +20,7 @@ ALGO_MODEL = {
     "convergence": "Драки",
     "fall": "Падение",
     "smoke": "Курение",
+    "manual": "Драки",
 }
 
 
@@ -71,7 +72,7 @@ def to_smartbox_ingest(
     resolver: CameraResolver | None = None,
 ) -> dict[str, Any]:
     """
-    Campus ``POST …/incident-ingest/`` body.
+    Campus ``POST /api/v1/incidents/`` body.
 
     Same shape as a SmartBox alert: envelope + ``alert_info`` with
     ``channel_info`` / ``behaviour.algo_model`` / ``behaviour.video_url``.

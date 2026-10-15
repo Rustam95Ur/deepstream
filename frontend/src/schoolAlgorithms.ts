@@ -18,6 +18,7 @@ export const TRIGGER_LABELS: Record<string, string> = {
   stream_silent: "Камера молчит",
   fall: "Падение",
   smoke: "Курение",
+  manual: "Ручная отправка",
 };
 
 export function triggerLabel(type: string): string {

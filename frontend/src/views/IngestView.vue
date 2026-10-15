@@ -160,7 +160,7 @@ async function removeHook(hook: Webhook) {
       <div class="card-head">
         <h2>Входящий API</h2>
         <p class="lede">
-          Django и другие сервисы пушат камеры сюда. В заголовке — логин и пароль webhook’а (HTTP Basic).
+          Campus и другие сервисы пушат камеры сюда. В заголовке — логин и пароль webhook’а (HTTP Basic).
         </p>
       </div>
       <div class="card-body">

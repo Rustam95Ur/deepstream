@@ -377,6 +377,111 @@ def _ring_for_camera(
     return None
 
 
+def capture_current_clip(
+    *,
+    camera: CameraConfig,
+    cameras: dict[str, CameraConfig],
+    event_id: str,
+    duration_s: float,
+) -> dict[str, Any]:
+    """Take the live stream as an MP4: recent ring-buffer, otherwise record the URI."""
+    duration = max(1.0, float(duration_s))
+    safe_event = "".join(c if c.isalnum() or c in "-_" else "_" for c in event_id)[:120]
+    prefix = safe_camera_dirname(camera.name or camera.camera_id)
+    out_path = clips_root() / f"{prefix}__{safe_event}.mp4"
+    result: dict[str, Any] = {
+        "status": "error",
+        "clip_path": None,
+        "segments": 0,
+        "error": "не удалось снять текущий поток",
+    }
+
+    ring = _ring_for_camera(camera, cameras)
+    if ring is not None:
+        out_dir, cam_prefix = ring
+        now = time.time()
+        segs = segments_in_window(
+            out_dir,
+            camera_prefix=cam_prefix,
+            start_ts=now - duration,
+            end_ts=now,
+            margin=edge_margin_s(),
+        )
+        result["segments"] = len(segs)
+        if segs and concat_segments(segs, out_path):
+            result["status"] = "ok"
+            result["clip_path"] = str(out_path)
+            result["error"] = None
+            return result
+
+    if _record_live_clip(camera.main_uri, out_path, duration):
+        result["status"] = "ok"
+        result["clip_path"] = str(out_path)
+        result["segments"] = 1
+        result["error"] = None
+        return result
+    return result
+
+
+def _record_live_clip(source: str, out_path: Path, duration_s: float) -> bool:
+    uri = (source or "").strip()
+    if not uri:
+        return False
+    duration = max(1.0, float(duration_s))
+    timeout = duration + 25.0
+    is_rtsp = uri.lower().startswith("rtsp://")
+    attempts: list[list[str]] = []
+    if is_rtsp:
+        attempts.append(_live_cmd(uri, out_path, duration, copy=True, rtsp=True))
+        attempts.append(_live_cmd(uri, out_path, duration, copy=False, rtsp=True))
+    else:
+        attempts.append(_live_cmd(uri, out_path, duration, copy=True, rtsp=False, tail=True))
+        attempts.append(_live_cmd(uri, out_path, duration, copy=True, rtsp=False, tail=False))
+        attempts.append(_live_cmd(uri, out_path, duration, copy=False, rtsp=False, tail=False))
+    for cmd in attempts:
+        if _ffmpeg_ok(cmd, timeout) and out_path.is_file() and out_path.stat().st_size > 0:
+            return True
+    return False
+
+
+def _live_cmd(
+    uri: str,
+    out_path: Path,
+    duration: float,
+    *,
+    copy: bool,
+    rtsp: bool,
+    tail: bool = False,
+) -> list[str]:
+    cmd = [_ffmpeg_bin(), "-y"]
+    if rtsp:
+        cmd += ["-rtsp_transport", "tcp"]
+    if tail:
+        cmd += ["-sseof", f"-{duration:.3f}"]
+    cmd += ["-i", uri]
+    if not tail:
+        cmd += ["-t", f"{duration:.3f}"]
+    cmd.append("-an")
+    if copy:
+        cmd += ["-c", "copy"]
+    else:
+        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
+    cmd.append(str(out_path))
+    return cmd
+
+
+def _ffmpeg_ok(cmd: list[str], timeout: float) -> bool:
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except Exception:
+        logger.exception("live clip ffmpeg exception")
+        return False
+    if res.returncode != 0:
+        logger.error("live clip ffmpeg failed: %s", (res.stderr or "")[:500])
+        return False
+    return True
+
+
 def _as_float(value: Any, default: float) -> float:
     try:
         if value is None or str(value).strip() == "":

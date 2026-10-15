@@ -10,6 +10,7 @@ from app.schemas.cameras import (
     CameraPatch,
     CameraTestBatchIn,
     CameraTestBatchOut,
+    CameraWebhookOut,
 )
 from app.schemas.history import (
     ClipOut,
@@ -62,6 +63,7 @@ __all__ = [
     "CameraSyncWebhookResult",
     "CameraTestBatchIn",
     "CameraTestBatchOut",
+    "CameraWebhookOut",
     "ClipOut",
     "ClipUrlOut",
     "HealthOut",

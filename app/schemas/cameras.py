@@ -214,3 +214,8 @@ class CameraTestBatchOut(BaseModel):
 class CameraImportOut(BaseModel):
     cameras: list[CameraOut]
     created: int
+
+
+class CameraWebhookOut(BaseModel):
+    event_id: str
+    queued: int
