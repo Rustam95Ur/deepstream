@@ -36,8 +36,9 @@ class TriggerConfig:
     cooldown_s: float = 30.0
     presence_min_people: int = 1
     presence_sustain_s: float = 2.0
-    vif_iou_thresh: float = 0.25
-    vif_sustain_s: float = 0.3
+    # vif = contact rules: min box IoU for a contact, min contact length (s)
+    vif_iou_thresh: float = 0.05
+    vif_sustain_s: float = 0.5
     by_type: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def allows(self, kind: str) -> bool:
@@ -69,7 +70,7 @@ class PipelineConfig:
     mux_width: int = 1280
     mux_height: int = 720
     person_class_id: int = 0
-    detector_model: str = "yolo11n"
+    detector_model: str = "peoplenet"
 
 
 @dataclass(slots=True)
@@ -119,8 +120,8 @@ def app_config_from_dict(raw: dict[str, Any]) -> AppConfig:
         cooldown_s=float(trig_raw.get("cooldown_s") or 30.0),
         presence_min_people=int(trig_raw.get("presence_min_people") or 1),
         presence_sustain_s=float(trig_raw.get("presence_sustain_s") or 2.0),
-        vif_iou_thresh=float(trig_raw.get("vif_iou_thresh") or 0.25),
-        vif_sustain_s=float(trig_raw.get("vif_sustain_s") or 0.3),
+        vif_iou_thresh=float(trig_raw.get("vif_iou_thresh") or 0.05),
+        vif_sustain_s=float(trig_raw.get("vif_sustain_s") or 0.5),
         by_type={
             k: dict(v)
             for k, v in (trig_raw.get("by_type") or {}).items()
@@ -132,7 +133,8 @@ def app_config_from_dict(raw: dict[str, Any]) -> AppConfig:
         clip_post_s=float(rec_raw.get("clip_post_s") or 15.0),
     )
     detector = (
-        str(pipe_raw.get("detector_model") or "yolo11n").strip().lower() or "yolo11n"
+        str(pipe_raw.get("detector_model") or "peoplenet").strip().lower()
+        or "peoplenet"
     )
     pipeline = PipelineConfig(
         infer_interval=int(

@@ -19,35 +19,25 @@ if [ "${ROLE}" = "video" ]; then
   echo "Starting Nexus DeepStream video"
   export NEXUS_DS_VIDEO_HOST="${NEXUS_DS_VIDEO_HOST:-0.0.0.0}"
   export NEXUS_DS_VIDEO_PORT="${NEXUS_DS_VIDEO_PORT:-8081}"
-  export DEEPSTREAM_YOLO_DIR="${DEEPSTREAM_YOLO_DIR:-/opt/nexus_deepstream/models/yolo11n}"
+  export DEEPSTREAM_MODEL_DIR="${DEEPSTREAM_MODEL_DIR:-/opt/nexus_deepstream/models}"
   export DEEPSTREAM_WORK_DIR="${DEEPSTREAM_WORK_DIR:-/tmp/nexus_deepstream}"
   export DEEPSTREAM_DEBUG_DIR="${DEEPSTREAM_DEBUG_DIR:-${NEXUS_DS_DATA_DIR}/debug}"
   export CUDA_VER="${CUDA_VER:-13.1}"
   mkdir -p "${NEXUS_DS_DATA_DIR}" "${DEEPSTREAM_WORK_DIR}" "${DEEPSTREAM_DEBUG_DIR}"
 
-  ONNX="${DEEPSTREAM_YOLO_DIR}/yolo11n.onnx"
-  CUSTOM_LIB="${DEEPSTREAM_YOLO_DIR}/nvdsinfer_custom_impl_Yolo/libnvdsinfer_custom_impl_Yolo.so"
-  PREPARE="${DEEPSTREAM_YOLO_DIR}/prepare.sh"
-  if [ ! -f "${ONNX}" ] || [ ! -f "${CUSTOM_LIB}" ]; then
-    if [ -f "${PREPARE}" ]; then
-      echo "YOLO11n artifacts missing; running prepare.sh (first run can take several minutes)"
-      python3 -c 'from pathlib import Path; import sys; Path(sys.argv[2]).write_bytes(Path(sys.argv[1]).read_bytes().replace(b"\r", b""))' \
-        "${PREPARE}" /tmp/yolo11n-prepare.sh
-      chmod +x /tmp/yolo11n-prepare.sh
-      if ! /bin/bash /tmp/yolo11n-prepare.sh; then
-        echo "ERROR: YOLO prepare failed. Pipeline will idle until ${ONNX} and the custom parser exist."
-      fi
-    else
-      echo "ERROR: YOLO11n ONNX missing: ${ONNX}. Run models/yolo11n/prepare.sh"
-    fi
-  fi
-
-  for eng in /opt/nvidia/deepstream/deepstream-9.0/model_b*_gpu0_fp16.engine; do
-    if [ -f "${eng}" ]; then
-      base="$(basename "${eng}")"
-      if [ ! -f "${DEEPSTREAM_YOLO_DIR}/${base}" ]; then
-        echo "Copying TensorRT engine ${base} -> ${DEEPSTREAM_YOLO_DIR}/"
-        cp -n "${eng}" "${DEEPSTREAM_YOLO_DIR}/${base}" || true
+  for spec in "peoplenet:peoplenet/resnet34_peoplenet.onnx" "rtmpose:rtmpose/rtmpose_kpts.onnx"; do
+    name="${spec%%:*}"; need="${DEEPSTREAM_MODEL_DIR}/${spec#*:}"
+    PREPARE="${DEEPSTREAM_MODEL_DIR}/${name}/prepare.sh"
+    if [ ! -s "${need}" ]; then
+      if [ -f "${PREPARE}" ]; then
+        echo "${name} missing; running prepare.sh (first run can take a few minutes)"
+        python3 -c 'from pathlib import Path; import sys; Path(sys.argv[2]).write_bytes(Path(sys.argv[1]).read_bytes().replace(b"\r", b""))' \
+          "${PREPARE}" "/tmp/${name}-prepare.sh"
+        if ! /bin/bash "/tmp/${name}-prepare.sh"; then
+          echo "ERROR: ${name} prepare failed (${need} missing)."
+        fi
+      else
+        echo "ERROR: ${need} missing. Run models/${name}/prepare.sh"
       fi
     fi
   done

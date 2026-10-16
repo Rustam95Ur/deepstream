@@ -1,4 +1,4 @@
-"""Person-based triggers: presence / convergence / vif (IoU proxy)."""
+"""Person-based triggers: presence / convergence / vif (contact rules)."""
 
 from __future__ import annotations
 
@@ -9,11 +9,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.ds.config import AppConfig, CameraConfig, TriggerConfig
+from app.ds.contact_rules import DEFAULTS as CONTACT_DEFAULTS
+from app.ds.contact_rules import ContactRules, Person
 from app.ds.payload import build_payload
 from app.ds.static_filter import WARMUP_S, StickyBox, filter_live_people
 from app.logging_config import log_extra
 
 logger = logging.getLogger(__name__)
+
+CONTACT_LEAD_S = 5.0  # vif clips start this long before the contact began
+CONTACT_MAX_PRE_S = 25.0  # ring buffer keeps >= 30 s
 
 
 @dataclass(slots=True)
@@ -24,6 +29,13 @@ class Detection:
     w: float
     h: float
     conf: float
+    # 17 COCO keypoints (x, y, score) in frame pixels from the pose SGIE, or None
+    kpts: list[tuple[float, float, float]] | None = None
+
+    @property
+    def xyxy(self) -> tuple[float, float, float, float]:
+        return (self.cx - self.w / 2, self.cy - self.h / 2,
+                self.cx + self.w / 2, self.cy + self.h / 2)
 
     @property
     def bh(self) -> float:
@@ -61,8 +73,8 @@ class CameraTriggerState:
     presence_last_hit: float | None = None
     converge_since: float | None = None
     converge_last_hit: float | None = None
-    vif_since: float | None = None
-    vif_last_hit: float | None = None
+    contact: ContactRules | None = None
+    contact_thr: dict[str, float] | None = None
     last_fire: dict[str, float] = field(default_factory=dict)
     prev_centers: dict[int, tuple[float, float, float]] = field(default_factory=dict)
     sticky: list[StickyBox] = field(default_factory=list)
@@ -172,7 +184,10 @@ class TriggerEngine:
         if self._allows(st.camera_id, "convergence"):
             self._eval_convergence(st, people, now)
         if self._allows(st.camera_id, "vif"):
-            self._eval_vif(st, people, now)
+            # tracked people BEFORE the static filter: a kid pinned still
+            # against a wall must not vanish as "furniture" (a cutout cannot
+            # pass the joint-angle rules anyway)
+            self._eval_vif(st, raw, now)
         if people:
             st.prev_centers = {d.track_id: (d.cx, d.cy, now) for d in people}
 
@@ -307,33 +322,44 @@ class TriggerEngine:
     def _eval_vif(
         self, st: CameraTriggerState, people: list[Detection], now: float
     ) -> None:
-        iou_thresh = float(
-            self._t("vif", "vif_iou_thresh", self.trigger.vif_iou_thresh)
-        )
-        sustain = float(self._t("vif", "vif_sustain_s", self.trigger.vif_sustain_s))
+        """Contact rules (app/ds/contact_rules.py): pair overlap + joint-angle variability."""
+        thr = {
+            key: float(
+                self._t(
+                    "vif",
+                    key,
+                    {
+                        "vif_iou_thresh": self.trigger.vif_iou_thresh,
+                        "vif_sustain_s": self.trigger.vif_sustain_s,
+                    }.get(key, default),
+                )
+            )
+            for key, default in CONTACT_DEFAULTS.items()
+        }
         cooldown = float(self._t("vif", "cooldown_s", self.trigger.cooldown_s))
-        if len(people) < 2:
-            if not self._still_held(st.vif_last_hit, now, self._miss_hold_s(sustain)):
-                st.vif_since = None
-            return
-        best_iou = 0.0
-        for i in range(len(people)):
-            for j in range(i + 1, len(people)):
-                best_iou = max(best_iou, people[i].iou(people[j]))
-        if best_iou >= iou_thresh:
-            st.vif_last_hit = now
-            if st.vif_since is None:
-                st.vif_since = now
-            elif (now - st.vif_since) >= sustain:
-                if st.cooled_down("vif", cooldown, now):
-                    self._emit(
-                        st,
-                        trigger_type="vif",
-                        evidence={"people": len(people), "iou": round(best_iou, 3)},
-                    )
-                st.vif_since = now
-        elif not self._still_held(st.vif_last_hit, now, self._miss_hold_s(sustain)):
-            st.vif_since = None
+        if st.contact is None or st.contact_thr != thr:
+            st.contact = ContactRules(thr, frame_h=self.app_cfg.pipeline.mux_height)
+            st.contact_thr = thr
+        # camera media time when known (file/inbox runs faster than real time)
+        t = st.last_video_s if st.last_video_s is not None else now
+        events = st.contact.update(
+            t, [Person(d.track_id, d.xyxy, d.kpts) for d in people]
+        )
+        for ev in events:
+            if not st.cooled_down("vif", cooldown, now):
+                continue
+            # the clip starts 5 s before the contact began (late events fire
+            # when the contact ends); capped to what the ring buffer still holds
+            pre_s = max(
+                float(self.app_cfg.record.clip_pre_s),
+                min(CONTACT_MAX_PRE_S, (ev.t - ev.start) + CONTACT_LEAD_S),
+            )
+            self._emit(
+                st,
+                trigger_type="vif",
+                evidence={"people": len(people), **ev.evidence()},
+                pre_s=pre_s,
+            )
 
     def _emit(
         self,
@@ -342,6 +368,7 @@ class TriggerEngine:
         trigger_type: str,
         evidence: dict[str, Any],
         category: str = "incident",
+        pre_s: float | None = None,
     ) -> None:
         if self._halted():
             return
@@ -352,7 +379,7 @@ class TriggerEngine:
             camera_name=(cam.name if cam else "") or st.camera_id,
             camera_uri=(cam.main_uri if cam else "") or "",
             trigger_type=trigger_type,
-            pre_s=self.app_cfg.record.clip_pre_s,
+            pre_s=self.app_cfg.record.clip_pre_s if pre_s is None else pre_s,
             post_s=self.app_cfg.record.clip_post_s,
             evidence=evidence,
             category=category,

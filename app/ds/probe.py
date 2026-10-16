@@ -1,4 +1,4 @@
-"""DeepStream batch metadata probe (person detections → TriggerEngine)."""
+"""DeepStream batch metadata probe (tracked people + skeletons → TriggerEngine)."""
 
 from __future__ import annotations
 
@@ -6,9 +6,75 @@ import logging
 import os
 from typing import Any
 
+from app.ds.pgie_config import POSE_INPUT_H, POSE_INPUT_W, POSE_OUTPUT_LAYER
 from app.ds.triggers import Detection, TriggerEngine
 
 logger = logging.getLogger(__name__)
+_pose_warned: set[str] = set()
+
+
+def _warn_once(key: str, msg: str, *args) -> None:
+    if key not in _pose_warned:
+        _pose_warned.add(key)
+        logger.warning(msg, *args)
+
+
+def _tensor_values(tensor: Any) -> list[float] | None:
+    """Host copy of a small output tensor as a flat list (51 floats for pose)."""
+    try:
+        import numpy as np
+
+        try:
+            arr = np.from_dlpack(tensor)
+        except Exception:
+            arr = np.from_dlpack(tensor.clone())
+        return [float(v) for v in np.asarray(arr, dtype=np.float32).reshape(-1)]
+    except Exception as exc:  # device tensor without a host copy, no numpy, ...
+        _warn_once(
+            "convert",
+            "pose tensor not readable on host (%s); rules run contact-only",
+            exc,
+        )
+        return None
+
+
+def object_keypoints(
+    object_meta: Any, left: float, top: float, width: float, height: float
+) -> list[tuple[float, float, float]] | None:
+    """17 COCO keypoints (x, y, score) in frame pixels from the pose SGIE tensor meta.
+
+    The SGIE resizes the person crop to 192x256 keeping the aspect ratio with
+    symmetric padding; undo that here. None if this object has no pose output.
+    """
+    items = getattr(object_meta, "tensor_items", None)
+    if items is None:
+        _warn_once(
+            "attr", "object metadata has no tensor_items; rules run contact-only"
+        )
+        return None
+    for user_meta in items:
+        try:
+            layers = user_meta.as_tensor_output().get_layers()
+        except Exception:
+            continue
+        layer = layers.get(POSE_OUTPUT_LAYER) if hasattr(layers, "get") else None
+        if layer is None:
+            continue
+        vals = _tensor_values(layer)
+        if vals is None or len(vals) < 51:
+            return None
+        s = min(POSE_INPUT_W / width, POSE_INPUT_H / height)
+        pad_x = (POSE_INPUT_W - width * s) / 2.0
+        pad_y = (POSE_INPUT_H - height * s) / 2.0
+        return [
+            (
+                left + (vals[3 * j] - pad_x) / s,
+                top + (vals[3 * j + 1] - pad_y) / s,
+                vals[3 * j + 2],
+            )
+            for j in range(17)
+        ]
+    return None
 
 
 def obj_attr(obj: Any, *names: str, default=None):
@@ -122,6 +188,9 @@ def build_probe(
                             w=width,
                             h=height,
                             conf=conf,
+                            kpts=object_keypoints(
+                                object_meta, left, top, width, height
+                            ),
                         )
                     )
                 engine.process_detections(pad_index, detections)
