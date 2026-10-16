@@ -30,9 +30,19 @@ DEFAULT_THRESHOLD_PROFILES: dict[str, dict[str, float | int]] = {
         "sustain_s": 0.4,
         "cooldown_s": 30.0,
     },
+    # "vif" = contact rules (app/ds/contact_rules.py). Two kids' boxes overlap
+    # (IoU >= vif_iou_thresh) for >= vif_sustain_s, and during that contact the
+    # joint angles of either kid vary enough within a second. Angle thresholds
+    # were fitted on 80 labelled school clips (45/45 incidents kept, 36% of
+    # ordinary contacts pass) with RTMO-m skeletons -- re-fit for RTMPose.
     "vif": {
-        "vif_iou_thresh": 0.25,
-        "vif_sustain_s": 0.3,
+        "vif_iou_thresh": 0.05,
+        "vif_sustain_s": 0.5,
+        "armt_std": 10.183,
+        "knee_std": 7.6658,
+        "elbow_std": 27.1699,
+        "iou_mean": 0.0565,
+        "joint_conf": 0.3,
         "cooldown_s": 30.0,
     },
     "stream_silent": {
@@ -69,8 +79,8 @@ def flat_threshold_defaults(settings: Any) -> dict[str, dict[str, Any]]:
     )
     base["vif"].update(
         {
-            "vif_iou_thresh": float(getattr(settings, "vif_iou_thresh", 0.25) or 0.25),
-            "vif_sustain_s": float(getattr(settings, "vif_sustain_s", 0.3) or 0.3),
+            "vif_iou_thresh": float(getattr(settings, "vif_iou_thresh", 0.05) or 0.05),
+            "vif_sustain_s": float(getattr(settings, "vif_sustain_s", 0.5) or 0.5),
             "cooldown_s": float(getattr(settings, "cooldown_s", 30.0) or 30.0),
         }
     )

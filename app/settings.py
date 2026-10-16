@@ -67,8 +67,9 @@ class NodeSettings(BaseModel):
     cooldown_s: float = 30.0
     presence_min_people: int = 1
     presence_sustain_s: float = 2.0
-    vif_iou_thresh: float = 0.25
-    vif_sustain_s: float = 0.3
+    # vif = contact rules (box overlap + joint-angle variability), see app/ds/contact_rules.py
+    vif_iou_thresh: float = 0.05
+    vif_sustain_s: float = 0.5
     clip_pre_s: float = 5.0
     clip_post_s: float = 15.0
     infer_interval: int = 2
@@ -78,7 +79,7 @@ class NodeSettings(BaseModel):
     mux_width: int = 1280
     mux_height: int = 720
     person_class_id: int = 0
-    detector_model: str = "yolo11n"
+    detector_model: str = "peoplenet"
 
     # Worker
     auto_start_pipeline: bool = True
@@ -107,8 +108,8 @@ class EnvBootstrap(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
     data_dir: Path = Field(default_factory=_default_data_dir)
-    yolo_dir: Path = Field(
-        default_factory=lambda: get_runtime_env().yolo_dir
+    model_dir: Path = Field(
+        default_factory=lambda: get_runtime_env().model_dir
     )
     work_dir: Path = Field(
         default_factory=lambda: get_runtime_env().work_dir
@@ -124,7 +125,7 @@ def load_env_bootstrap() -> EnvBootstrap:
         host=rt.host,
         port=rt.port,
         data_dir=rt.data_dir,
-        yolo_dir=rt.yolo_dir,
+        model_dir=rt.model_dir,
         work_dir=rt.work_dir,
         debug_dir=rt.debug_dir,
     )

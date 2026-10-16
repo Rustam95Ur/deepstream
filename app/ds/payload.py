@@ -138,7 +138,7 @@ def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "model_versions": (
             models
             if isinstance(models, dict)
-            else {"detector": "yolo11n", "first_line": "nexus_deepstream"}
+            else {"detector": "peoplenet", "pose": "rtmpose-m", "first_line": "nexus_deepstream"}
         ),
         "clip": clip,
         "video_url": clip["url"],
@@ -216,7 +216,8 @@ def build_payload(
             "post_s": float(post_s),
             "evidence": evidence or {},
             "model_versions": {
-                "detector": "yolo11n",
+                "detector": "peoplenet",
+                "pose": "rtmpose-m",
                 "first_line": "nexus_deepstream",
             },
             "node_id": node_id,
