@@ -27,6 +27,24 @@ from app.webhooks.repository import list_enabled_webhooks
 logger = logging.getLogger(__name__)
 
 
+def _unique_webhook_urls(hooks: list[Any]) -> list[Any]:
+    """One POST per URL. Two rows with the same address would deliver the clip twice."""
+    seen: set[str] = set()
+    unique: list[Any] = []
+    for hook in hooks:
+        key = str(getattr(hook, "url", "") or "").strip().rstrip("/")
+        if not key or key in seen:
+            if key:
+                logger.warning(
+                    "skip duplicate webhook url id=%s",
+                    getattr(hook, "id", ""),
+                )
+            continue
+        seen.add(key)
+        unique.append(hook)
+    return unique
+
+
 def enqueue_payload(payload: dict[str, Any], *, reason: str = "trigger") -> int:
     from app.billing import license_lock_detail, license_ok
 
@@ -78,7 +96,7 @@ def enqueue_payload(payload: dict[str, Any], *, reason: str = "trigger") -> int:
             error="database unavailable",
         )
         return 0
-    hooks = list_enabled_webhooks()
+    hooks = _unique_webhook_urls(list_enabled_webhooks())
     if not hooks:
         record_send(
             event_id=event_id,

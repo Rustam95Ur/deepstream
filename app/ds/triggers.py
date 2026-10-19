@@ -15,6 +15,10 @@ from app.logging_config import log_extra
 
 logger = logging.getLogger(__name__)
 
+# One school scenario ("Драка / сходка") enables both. Campus stores both as
+# "Драки", so a shared pause keeps one scene from posting two copies of the clip.
+_FIGHT_TYPES = frozenset({"convergence", "vif"})
+
 
 @dataclass(slots=True)
 class Detection:
@@ -64,6 +68,7 @@ class CameraTriggerState:
     vif_since: float | None = None
     vif_last_hit: float | None = None
     last_fire: dict[str, float] = field(default_factory=dict)
+    fight_skip_noted: dict[str, float] = field(default_factory=dict)
     prev_centers: dict[int, tuple[float, float, float]] = field(default_factory=dict)
     sticky: list[StickyBox] = field(default_factory=list)
 
@@ -106,6 +111,56 @@ class TriggerEngine:
 
     def _t(self, kind: str, key: str, fallback: float | int) -> float | int:
         return self.trigger.value(kind, key, fallback)
+
+    def _can_fire(
+        self,
+        st: CameraTriggerState,
+        trigger_type: str,
+        cooldown_s: float,
+        now: float,
+    ) -> bool:
+        """Per-type cooldown. Fight detectors also wait out the sibling's clip."""
+        last = st.last_fire.get(trigger_type)
+        gap = float(cooldown_s)
+        if trigger_type in _FIGHT_TYPES:
+            clip_gap = float(self.app_cfg.record.clip_pre_s) + float(
+                self.app_cfg.record.clip_post_s
+            )
+            for other in _FIGHT_TYPES:
+                prev = st.last_fire.get(other)
+                if prev is None:
+                    continue
+                if last is None or prev >= last:
+                    last = prev
+                    if other != trigger_type:
+                        gap = max(gap, clip_gap)
+        if last is None:
+            return True
+        if now <= last:
+            return False
+        return (now - last) >= gap
+
+    def _note_fight_skip(self, st: CameraTriggerState, trigger_type: str) -> None:
+        own = st.last_fire.get(trigger_type)
+        peer_at: float | None = None
+        for kind in _FIGHT_TYPES:
+            if kind == trigger_type:
+                continue
+            prev = st.last_fire.get(kind)
+            if prev is None:
+                continue
+            if peer_at is None or prev >= peer_at:
+                peer_at = prev
+        if peer_at is None or (own is not None and own >= peer_at):
+            return
+        if st.fight_skip_noted.get(trigger_type) == peer_at:
+            return
+        st.fight_skip_noted[trigger_type] = peer_at
+        logger.info(
+            "skip %s camera=%s: fight clip already queued",
+            trigger_type,
+            st.camera_id,
+        )
 
     def note_frame(self, pad_index: int, video_s: float | None = None) -> None:
         st = self.by_pad.get(pad_index)
@@ -288,7 +343,7 @@ class TriggerEngine:
             if st.converge_since is None:
                 st.converge_since = now
             elif (now - st.converge_since) >= sustain:
-                if st.cooled_down("convergence", cooldown, now):
+                if self._can_fire(st, "convergence", cooldown, now):
                     self._emit(
                         st,
                         trigger_type="convergence",
@@ -298,6 +353,8 @@ class TriggerEngine:
                             "approaching": approaching,
                         },
                     )
+                else:
+                    self._note_fight_skip(st, "convergence")
                 st.converge_since = now
         elif not self._still_held(
             st.converge_last_hit, now, self._miss_hold_s(sustain)
@@ -325,12 +382,14 @@ class TriggerEngine:
             if st.vif_since is None:
                 st.vif_since = now
             elif (now - st.vif_since) >= sustain:
-                if st.cooled_down("vif", cooldown, now):
+                if self._can_fire(st, "vif", cooldown, now):
                     self._emit(
                         st,
                         trigger_type="vif",
                         evidence={"people": len(people), "iou": round(best_iou, 3)},
                     )
+                else:
+                    self._note_fight_skip(st, "vif")
                 st.vif_since = now
         elif not self._still_held(st.vif_last_hit, now, self._miss_hold_s(sustain)):
             st.vif_since = None

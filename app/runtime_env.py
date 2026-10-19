@@ -10,7 +10,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.env import env_float, env_int, env_str
+from app.env import env_bool, env_float, env_int, env_str
+
+
+def _minio_endpoint_url() -> str:
+    """Own MinIO, or the incidents MinIO when shared mode is on."""
+    if env_bool("NEXUS_DS_SHARED_MINIO"):
+        shared = env_str("NEXUS_DS_SHARED_MINIO_ENDPOINT")
+        if shared:
+            return shared
+    return env_str("NEXUS_DS_MINIO_ENDPOINT_URL")
+
+
+def _public_url() -> str:
+    public = env_str("NEXUS_DS_PUBLIC_URL").rstrip("/")
+    if public:
+        return public
+    if env_bool("NEXUS_DS_SHARED_MINIO"):
+        domain = env_str("NEXUS_DS_DOMAIN")
+        if domain:
+            return f"https://{domain}"
+    return ""
 
 
 def _default_data_dir() -> Path:
@@ -129,7 +149,7 @@ def load_runtime_env() -> RuntimeEnv:
         ).lower(),
         ring_segment_dir=env_str("NEXUS_DS_RING_SEGMENT_DIR"),
         clips_dir=env_str("NEXUS_DS_CLIPS_DIR"),
-        minio_endpoint_url=env_str("NEXUS_DS_MINIO_ENDPOINT_URL"),
+        minio_endpoint_url=_minio_endpoint_url(),
         minio_access_key=env_str("NEXUS_DS_MINIO_ACCESS_KEY"),
         minio_secret_key=env_str("NEXUS_DS_MINIO_SECRET_KEY"),
         minio_region=env_str("NEXUS_DS_MINIO_REGION", "us-east-1") or "us-east-1",
@@ -140,7 +160,7 @@ def load_runtime_env() -> RuntimeEnv:
         minio_presign_expire_s=env_int(
             "NEXUS_DS_MINIO_PRESIGN_EXPIRE_S", 7 * 24 * 3600
         ),
-        public_url=env_str("NEXUS_DS_PUBLIC_URL").rstrip("/"),
+        public_url=_public_url(),
         advertise_port=env_str("NEXUS_DS_ADVERTISE_PORT"),
         utc_offset_hours=env_int("NEXUS_DS_UTC_OFFSET_HOURS", 5),
     )

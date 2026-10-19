@@ -1,0 +1,54 @@
+# Use the incidents MinIO and publish this UI only via the incidents nginx.
+# Start incidents with docker-compose.deepstream.yml first (it creates nexus-edge).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.shared.yml up -d
+#
+# Without this file DeepStream keeps its own MinIO and sends the clip as a file.
+# NEXUS_DS_SHARED_MINIO=false in .env restores that send path, but this file
+# still does not start a local MinIO — use docker-compose.yml alone for that.
+
+networks:
+  nexus-edge:
+    external: true
+    name: nexus-edge
+
+services:
+  api:
+    environment:
+      NEXUS_DS_SHARED_MINIO: ${NEXUS_DS_SHARED_MINIO:-true}
+      NEXUS_DS_SHARED_MINIO_ENDPOINT: ${NEXUS_DS_SHARED_MINIO_ENDPOINT:-http://nexus-minio:9000}
+      NEXUS_DS_MINIO_BUCKET: ${NEXUS_DS_MINIO_BUCKET:-incidents}
+      NEXUS_DS_DOMAIN: ${NEXUS_DS_DOMAIN:-}
+      NEXUS_DS_PUBLIC_URL: ${NEXUS_DS_PUBLIC_URL:-}
+    networks:
+      - default
+      - nexus-edge
+
+  pipeline:
+    environment:
+      NEXUS_DS_SHARED_MINIO: ${NEXUS_DS_SHARED_MINIO:-true}
+      NEXUS_DS_SHARED_MINIO_ENDPOINT: ${NEXUS_DS_SHARED_MINIO_ENDPOINT:-http://nexus-minio:9000}
+      NEXUS_DS_MINIO_BUCKET: ${NEXUS_DS_MINIO_BUCKET:-incidents}
+      NEXUS_DS_MINIO_KEY_PREFIX: ${NEXUS_DS_MINIO_KEY_PREFIX:-incidents/}
+      NEXUS_DS_DOMAIN: ${NEXUS_DS_DOMAIN:-}
+      NEXUS_DS_PUBLIC_URL: ${NEXUS_DS_PUBLIC_URL:-}
+    depends_on: !override
+      api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+    networks:
+      - default
+      - nexus-edge
+
+  nginx:
+    ports: !override []
+    networks:
+      - default
+      - nexus-edge
+
+  minio:
+    profiles:
+      - local-minio

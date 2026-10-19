@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 
 from app.campus import to_smartbox_ingest
 from app.db import db_enabled, session_scope
+from app.env import env_bool
 from app.ds.payload import (
     CLIP_META_KEY,
     clip_from_payload,
@@ -148,6 +149,42 @@ def _delivery_skip_reason(job: OutboundJobRow) -> tuple[Webhook | None, str]:
     return hook, ""
 
 
+def _shared_clip_ref(
+    event_id: str, payload: dict[str, Any] | None
+) -> tuple[str, str]:
+    """Bucket and key already written to MinIO. Empty key if there is no object."""
+    raw = payload if isinstance(payload, dict) else {}
+    clip = clip_from_payload(raw)
+    key = clip["key"]
+    bucket = clip["bucket"]
+    if not key and event_id and db_enabled():
+        with session_scope(write=False) as session:
+            row = session.scalar(
+                select(TriggerEventRow).where(TriggerEventRow.event_id == event_id)
+            )
+            hist = dict(row.payload or {}) if row else {}
+        hist_clip = clip_from_payload(hist)
+        key = hist_clip.get("key") or key
+        bucket = bucket or hist_clip.get("bucket") or ""
+    if not bucket:
+        bucket = get_minio_store().config.bucket
+    return bucket, key
+
+
+def _stamp_shared_video(outbound: dict[str, Any], *, bucket: str, key: str) -> None:
+    outbound["video_bucket"] = bucket
+    outbound["video_key"] = key
+    alert = outbound.get("alert_info")
+    if not isinstance(alert, dict):
+        return
+    alert = dict(alert)
+    behaviour = dict(alert.get("behaviour") or {})
+    behaviour["video_bucket"] = bucket
+    behaviour["video_key"] = key
+    alert["behaviour"] = behaviour
+    outbound["alert_info"] = alert
+
+
 def deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     hook, skip = _delivery_skip_reason(job)
     if skip:
@@ -168,6 +205,26 @@ def deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
     }
     if event_id:
         headers["X-Nexus-Event-Id"] = event_id
+
+    needs_video = requires_video(outbound) or requires_video(job.payload or {})
+    if env_bool("NEXUS_DS_SHARED_MINIO") and needs_video:
+        bucket, key = _shared_clip_ref(
+            event_id, job.payload if isinstance(job.payload, dict) else None
+        )
+        if not key:
+            why = "shared minio: video key is missing"
+            logger.error("webhook skip video event=%s reason=%s", event_id, why)
+            return False, None, why
+        _stamp_shared_video(outbound, bucket=bucket, key=key)
+        logger.info(
+            "webhook shared object event=%s bucket=%s key=%s url=%s",
+            event_id,
+            bucket,
+            key,
+            url,
+        )
+        body = json.dumps(outbound, ensure_ascii=False).encode("utf-8")
+        return post_json(url, body, headers=headers, timeout_sec=max(float(timeout), 30.0))
 
     clip_data, filename, clip_why = clip_bytes_for_event(
         event_id, job.payload if isinstance(job.payload, dict) else None
