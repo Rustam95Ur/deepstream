@@ -111,7 +111,7 @@ class PipelineManager:
     def _loop(self) -> None:
         boot = get_bootstrap()
         os.environ.setdefault("DEEPSTREAM_WORK_DIR", str(boot.work_dir))
-        os.environ.setdefault("DEEPSTREAM_YOLO_DIR", str(boot.yolo_dir))
+        os.environ.setdefault("DEEPSTREAM_MODEL_DIR", str(boot.model_dir))
         os.environ.setdefault("DEEPSTREAM_DEBUG_DIR", str(boot.debug_dir))
 
         while not self._stop.is_set():

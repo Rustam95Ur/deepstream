@@ -9,7 +9,7 @@ import time
 from typing import Any
 
 from app.ds.config import AppConfig, CameraConfig
-from app.ds.pgie_config import write_pgie_config, write_source_config
+from app.ds.pgie_config import write_pgie_config, write_pose_config, write_source_config
 from app.ds.probe import build_probe
 from app.ds.triggers import TriggerEngine
 from app.runtime_env import get_runtime_env
@@ -57,16 +57,11 @@ def run_pipeline(
 
     rt = get_runtime_env()
     work_dir = rt.work_dir
-    yolo_dir = rt.yolo_dir
     detector = (
-        str(getattr(app_cfg.pipeline, "detector_model", "yolo11n") or "yolo11n")
+        str(getattr(app_cfg.pipeline, "detector_model", "peoplenet") or "peoplenet")
         .strip()
         .lower()
     )
-    if detector.startswith("yolo") and yolo_dir.is_dir():
-        # DeepStream-Yolo custom engine I/O is CWD-relative (model_bN_gpu0_fp16.engine)
-        os.chdir(yolo_dir)
-        logger.info("CWD set to YOLO dir for engine cache: %s", yolo_dir)
 
     infer_batch = max(1, len(cameras))
     mux_batch = max(infer_batch, int(max_batch_size or 0))
@@ -77,6 +72,23 @@ def run_pipeline(
         conf_threshold=app_cfg.pipeline.conf_threshold,
         detector_model=detector,
     )
+    # Pose on every tracked person (rules read the skeletons). Missing model ->
+    # no pose stage; the contact rules then run on box overlap alone.
+    pose = write_pose_config(
+        work_dir / "pose_sgie.txt",
+        batch_size=32,
+        min_object_height=max(16, round(40 * app_cfg.pipeline.mux_height / 1080)),
+        person_class_id=app_cfg.pipeline.person_class_id,
+    )
+    if pose is None:
+        logger.warning(
+            "pose model missing (models/rtmpose/prepare.sh) -- vif runs contact-only"
+        )
+    for path in (rt.tracker_config, rt.tracker_lib):
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"tracker file missing: {path} (DEEPSTREAM_TRACKER_CONFIG / _LIB)"
+            )
     sources = write_source_config(
         work_dir / "sources.yml",
         cameras,
@@ -100,12 +112,13 @@ def run_pipeline(
     )
 
     logger.info(
-        "Starting DeepStream pipeline cameras=%s mux_batch=%s live=%s exit_on_eos=%s pgie=%s sources=%s",
+        "Starting DeepStream pipeline cameras=%s mux_batch=%s live=%s exit_on_eos=%s pgie=%s pose=%s sources=%s",
         len(cameras),
         mux_batch,
         app_cfg.pipeline.live_source,
         exit_on_eos,
         pgie,
+        pose,
         sources,
     )
     for i, cam in enumerate(cameras):
@@ -116,8 +129,12 @@ def run_pipeline(
         Flow(pipeline)
         .batch_capture(str(sources))
         .infer(str(pgie))
-        .attach(what=probe)
-        .render(mode=RenderMode.DISCARD, enable_osd=False, sync=False)
+        .track(ll_config_file=str(rt.tracker_config), ll_lib_file=str(rt.tracker_lib))
+    )
+    if pose is not None:
+        flow = flow.infer(str(pose))
+    flow = flow.attach(what=probe).render(
+        mode=RenderMode.DISCARD, enable_osd=False, sync=False
     )
 
     stop_lock = threading.Lock()

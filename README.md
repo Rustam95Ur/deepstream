@@ -74,7 +74,7 @@ Open http://127.0.0.1:5173
 docker compose up --build -d
 ```
 
-First boot of **video** runs `shell/video-boot.sh`, which calls `models/yolo11n/prepare.sh` if `yolo11n.onnx` is missing (download weights, export ONNX, compile the DeepStream parser). Needs internet and can take several minutes. You can also copy an already prepared tree into `models/yolo11n` (see `models/README.md`).
+First boot of **video** runs `shell/video-boot.sh`, which calls `models/peoplenet/prepare.sh` and `models/rtmpose/prepare.sh` if their ONNX files are missing (PeopleNet for people boxes, RTMPose for skeletons; no Ultralytics). Needs internet and takes a few minutes. You can also copy already prepared `models/peoplenet` and `models/rtmpose` directories (see `models/README.md`). The `vif` trigger is the contact rule set in `app/ds/contact_rules.py`.
 
 nginx (UI + `/api` proxy): http://127.0.0.1:8080
 

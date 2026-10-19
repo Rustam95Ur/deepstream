@@ -46,7 +46,7 @@ HELP = {
     "mux_width": "Ширина кадра в пайплайне",
     "mux_height": "Высота кадра в пайплайне",
     "person_class_id": "Номер класса «человек» в модели",
-    "detector_model": "Имя модели, обычно yolo11n",
+    "detector_model": "Имя модели детектора людей, обычно peoplenet",
     "auto_start_pipeline": "Запускать разбор видео при старте video-контейнера",
     "max_streams": "Сколько камер разбирать одновременно",
     "trigger_thresholds": "Пороги по типам одним JSON-объектом",

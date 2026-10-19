@@ -8,7 +8,8 @@ venv/
 *.engine
 *.onnx
 *.pt
-models/yolo11n/nvdsinfer_custom_impl_Yolo/
+models/peoplenet/*.txt
+models/yolo11n/
 .DS_Store
 .pytest_cache/
 .ruff_cache/

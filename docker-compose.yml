@@ -167,7 +167,7 @@ services:
       NEXUS_DS_HISTORY_FLUSH_MS: "200"
       NEXUS_DS_SINK_WORKERS: "4"
       NEXUS_DS_SINK_QUEUE: "10000"
-      DEEPSTREAM_YOLO_DIR: /opt/nexus_deepstream/models/yolo11n
+      DEEPSTREAM_MODEL_DIR: /opt/nexus_deepstream/models
       DEEPSTREAM_WORK_DIR: /tmp/nexus_deepstream
       DEEPSTREAM_DEBUG_DIR: /data/nexus_deepstream/debug
       NEXUS_DS_MINIO_ENDPOINT_URL: ${NEXUS_DS_MINIO_ENDPOINT_URL:-http://minio:9000}

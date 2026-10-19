@@ -46,7 +46,9 @@ class RuntimeEnv:
     host: str
     port: int
     data_dir: Path
-    yolo_dir: Path
+    model_dir: Path          # models/{peoplenet,rtmpose} (DEEPSTREAM_MODEL_DIR)
+    tracker_config: Path     # NvDCF low-level config (DEEPSTREAM_TRACKER_CONFIG)
+    tracker_lib: Path        # libnvds_nvmultiobjecttracker.so (DEEPSTREAM_TRACKER_LIB)
     work_dir: Path
     debug_dir: Path
 
@@ -113,8 +115,15 @@ def load_runtime_env() -> RuntimeEnv:
         host=env_str("NEXUS_DS_HOST", "0.0.0.0") or "0.0.0.0",
         port=env_int("NEXUS_DS_PORT", 8080),
         data_dir=data_dir,
-        yolo_dir=Path(
-            env_str("DEEPSTREAM_YOLO_DIR") or str(root / "models" / "yolo11n")
+        model_dir=Path(env_str("DEEPSTREAM_MODEL_DIR") or str(root / "models")),
+        tracker_config=Path(
+            env_str("DEEPSTREAM_TRACKER_CONFIG")
+            or "/opt/nvidia/deepstream/deepstream/samples/configs/deepstream-app/"
+            "config_tracker_NvDCF_perf.yml"
+        ),
+        tracker_lib=Path(
+            env_str("DEEPSTREAM_TRACKER_LIB")
+            or "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so"
         ),
         work_dir=Path(env_str("DEEPSTREAM_WORK_DIR") or "/tmp/nexus_deepstream"),
         debug_dir=Path(env_str("DEEPSTREAM_DEBUG_DIR") or str(data_dir / "debug")),
