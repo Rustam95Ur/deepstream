@@ -67,9 +67,13 @@ def run_pipeline(
 
     infer_batch = max(1, len(cameras))
     mux_batch = max(infer_batch, int(max_batch_size or 0))
+    # nvinfer names and builds the engine from the streammux max batch
+    # (max(cameras, max_streams)). A different batch-size in the config
+    # (pose 32, detector = camera count) looks for ..._b32_ / ..._b24_
+    # while the file on disk is ..._b{mux}_, so TensorRT rebuilds every start.
     pgie = write_pgie_config(
         work_dir / "pgie.yml",
-        batch_size=infer_batch,
+        batch_size=mux_batch,
         infer_interval=app_cfg.pipeline.infer_interval,
         conf_threshold=app_cfg.pipeline.conf_threshold,
         detector_model=detector,
@@ -78,7 +82,7 @@ def run_pipeline(
     # no pose stage; the contact rules then run on box overlap alone.
     pose = write_pose_config(
         work_dir / "pose_sgie.txt",
-        batch_size=32,
+        batch_size=mux_batch,
         min_object_height=max(16, round(40 * app_cfg.pipeline.mux_height / 1080)),
         person_class_id=app_cfg.pipeline.person_class_id,
     )

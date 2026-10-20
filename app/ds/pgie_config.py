@@ -90,7 +90,7 @@ def pose_model_path() -> Path:
 def write_pose_config(
     dest: Path,
     *,
-    batch_size: int = 32,
+    batch_size: int,
     min_object_height: int = 27,
     person_class_id: int = 0,
 ) -> Path | None:
@@ -100,6 +100,8 @@ def write_pose_config(
     output is ``keypoints`` (N x 17 x 3: x, y in 192x256 network pixels, score),
     attached as tensor meta to each object. The crop keeps the aspect ratio with
     symmetric padding; app/ds/probe.py maps the points back to the frame.
+    ``batch_size`` must be the streammux max batch: nvinfer stores the engine
+    as ``{onnx}_b{batch}_gpu0_fp16.engine`` and will not load a different one.
     Returns None (pose disabled, rules fall back to contact-only) if the model
     is missing.
     """
