@@ -196,6 +196,11 @@ export interface Webhook {
   auth_configured: boolean;
   timeout_sec: number;
   max_retries: number;
+  proxy_enabled: boolean;
+  proxy_host: string;
+  proxy_port: number;
+  proxy_login: string;
+  proxy_auth_configured: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -208,6 +213,11 @@ export interface WebhookIn {
   password?: string | null;
   timeout_sec: number;
   max_retries: number;
+  proxy_enabled: boolean;
+  proxy_host: string;
+  proxy_port: number;
+  proxy_login: string;
+  proxy_password?: string | null;
 }
 
 export interface CameraSyncWebhookResult {

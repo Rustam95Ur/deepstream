@@ -197,6 +197,7 @@
       <a href="#flags">Общие флаги</a>
       <div class="group">Данные</div>
       <a href="#cameras">Камеры</a>
+      <a href="#send">Отправить в вебхук</a>
       <a href="#settings">Настройки</a>
       <a href="#webhooks">Webhook</a>
       <a href="#users">Пользователи</a>
@@ -249,7 +250,7 @@ docker exec -it nexus-deepstream-api python -m app.cli cameras list</code></pre>
           <tbody>
             <tr><td><code>--json</code></td><td>Результат одним JSON. Ошибки тоже JSON, но в stderr. Ставится перед группой: <code>--json cameras list</code>.</td></tr>
             <tr><td><code>--version</code></td><td>Версия ноды.</td></tr>
-            <tr><td><code>--yes</code></td><td>Подтверждение удаления. Без него <code>delete</code> ничего не сотрёт.</td></tr>
+            <tr><td><code>--yes</code></td><td>Подтверждение удаления и массовой отправки в вебхук. Без него эти команды ничего не делают.</td></tr>
             <tr><td><code>--help</code></td><td>Справка по текущей команде. База для этого не нужна.</td></tr>
           </tbody>
         </table>
@@ -314,6 +315,35 @@ python -m app.cli cameras delete cam_gate --yes</code></pre>
           <pre><code>python -m app.cli cameras test --uri rtsp://127.0.0.1:8554/cam1 --count 2</code></pre>
         </div>
         <p>Создаёт <code>test_1</code>, <code>test_2</code>, … на один и тот же адрес, в пределах <code>max_streams</code>. <code>--count</code> от 1 до 128.</p>
+      </section>
+
+      <section id="send">
+        <h2>Отправить в вебхук</h2>
+        <p>
+          Та же кнопка, что в реестре камер: с текущего потока снимается ролик и ставится
+          в очередь как инцидент на все включённые вебхуки. Одна камера или несколько id —
+          выборочно. <code>--all</code> — весь реестр. Каждая камера ждёт свой ролик, поэтому
+          пачка идёт по очереди и может занять заметное время.
+        </p>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli cameras webhook cam_gate
+python -m app.cli cameras webhook cam_gate cam_yard
+python -m app.cli cameras webhook --all --enabled --yes
+python -m app.cli cameras webhook --all --yes</code></pre>
+        </div>
+        <table>
+          <thead><tr><th>Флаг</th><th>Зачем</th></tr></thead>
+          <tbody>
+            <tr><td>id</td><td>Один или несколько id. Повтор одного и того же id отправляется один раз.</td></tr>
+            <tr><td><code>--all</code></td><td>Все камеры реестра. Без <code>--yes</code> команда останавливается.</td></tr>
+            <tr><td><code>--enabled</code></td><td>Только вместе с <code>--all</code>: пропустить выключенные.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Если у части камер ролик не снялся, остальные всё равно отправляются.
+          В конце строка <code>готово: N из M</code>. Код выхода <code>1</code>, если хотя бы одна не ушла.
+          С <code>--json</code> в ответе поля <code>ok</code>, <code>failed</code> и <code>items</code>.
+        </p>
       </section>
 
       <section id="settings">

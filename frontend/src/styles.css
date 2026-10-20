@@ -156,6 +156,7 @@ input:focus-visible,
   line-height: 1.35;
   text-wrap: pretty;
 }
+.switch + .field-hint { margin-top: 0.4rem; }
 .ig-addon {
   display: flex;
   align-items: center;
@@ -933,7 +934,11 @@ td.uri { word-break: break-all; color: var(--muted); max-width: 320px; }
   background: rgb(30 33 41 / 0.45);
 }
 .modal { width: min(24rem, 100%); }
-.modal.modal-form { width: min(40rem, 100%); }
+.modal.modal-form {
+  width: min(40rem, 100%);
+  max-height: calc(100vh - 2.5rem);
+  overflow: auto;
+}
 .modal.modal-video { width: min(56rem, 100%); }
 .clip-player {
   display: block;

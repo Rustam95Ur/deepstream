@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.api import ApiAuth, LicenseAuth
 from app.db import db_enabled
-from app.schemas import WebhookIn, WebhookListOut, WebhookOut, CameraSyncPushOut
+from app.schemas import CameraSyncPushOut, WebhookIn, WebhookListOut, WebhookOut
 from app.camera_sync import push_cameras_to_webhooks
 from app.webhooks import (
     Webhook,
@@ -39,9 +39,26 @@ def _out(hook: Webhook) -> WebhookOut:
         auth_configured=hook.auth_configured,
         timeout_sec=hook.timeout_sec,
         max_retries=hook.max_retries,
+        proxy_enabled=hook.proxy_enabled,
+        proxy_host=hook.proxy_host,
+        proxy_port=hook.proxy_port,
+        proxy_login=hook.proxy_login,
+        proxy_auth_configured=hook.proxy_auth_configured,
         created_at=hook.created_at,
         updated_at=hook.updated_at,
     )
+
+
+def _require_proxy_password(body: WebhookIn, existing: Webhook | None) -> None:
+    if not body.proxy_enabled or not body.proxy_login or body.proxy_password:
+        return
+    if (
+        existing
+        and existing.proxy_auth_configured
+        and body.proxy_login == (existing.proxy_login or "").strip()
+    ):
+        return
+    raise HTTPException(status_code=400, detail="Укажите пароль прокси")
 
 
 @router.get("", response_model=WebhookListOut)
@@ -63,6 +80,7 @@ def post_webhook(body: WebhookIn) -> WebhookOut:
         raise HTTPException(status_code=400, detail="Укажите логин для входящего API")
     if not body.password:
         raise HTTPException(status_code=400, detail="Укажите пароль для входящего API")
+    _require_proxy_password(body, None)
     hook = create_webhook(
         name=body.name,
         url=body.url,
@@ -71,6 +89,11 @@ def post_webhook(body: WebhookIn) -> WebhookOut:
         password=body.password,
         timeout_sec=body.timeout_sec,
         max_retries=body.max_retries,
+        proxy_enabled=body.proxy_enabled,
+        proxy_host=body.proxy_host,
+        proxy_port=body.proxy_port,
+        proxy_login=body.proxy_login,
+        proxy_password=body.proxy_password or "",
     )
     return _out(hook)
 
@@ -86,6 +109,7 @@ def put_webhook(webhook_id: str, body: WebhookIn) -> WebhookOut:
         and not body.password
     ):
         raise HTTPException(status_code=400, detail="Укажите пароль для входящего API")
+    _require_proxy_password(body, existing)
     hook = update_webhook(
         webhook_id,
         name=body.name,
@@ -95,6 +119,11 @@ def put_webhook(webhook_id: str, body: WebhookIn) -> WebhookOut:
         max_retries=body.max_retries,
         login=body.login or None,
         password=body.password,
+        proxy_enabled=body.proxy_enabled,
+        proxy_host=body.proxy_host,
+        proxy_port=body.proxy_port,
+        proxy_login=body.proxy_login,
+        proxy_password=body.proxy_password,
     )
     if hook is None:
         raise HTTPException(status_code=404, detail="Webhook not found")

@@ -70,9 +70,15 @@ def create_webhook(
     password: str = "",
     timeout_sec: float = 5.0,
     max_retries: int = 5,
+    proxy_enabled: bool = False,
+    proxy_host: str = "",
+    proxy_port: int = 0,
+    proxy_login: str = "",
+    proxy_password: str = "",
 ) -> Webhook:
     now = utcnow()
     login_value = (login or "").strip()
+    proxy_login_value = (proxy_login or "").strip()
     with session_scope(write=True) as session:
         row = WebhookRow(
             id=str(uuid4()),
@@ -83,6 +89,11 @@ def create_webhook(
             password_hash=hash_password(password) if password else "",
             timeout_sec=float(timeout_sec),
             max_retries=int(max_retries),
+            proxy_enabled=bool(proxy_enabled),
+            proxy_host=(proxy_host or "").strip(),
+            proxy_port=int(proxy_port or 0),
+            proxy_login=proxy_login_value,
+            proxy_password=proxy_password if proxy_login_value and proxy_password else "",
             created_at=now,
             updated_at=now,
         )
@@ -101,6 +112,11 @@ def update_webhook(
     max_retries: int,
     login: str | None = None,
     password: str | None = None,
+    proxy_enabled: bool = False,
+    proxy_host: str = "",
+    proxy_port: int = 0,
+    proxy_login: str = "",
+    proxy_password: str | None = None,
 ) -> Webhook | None:
     with session_scope(write=True) as session:
         row = session.get(WebhookRow, webhook_id)
@@ -116,6 +132,14 @@ def update_webhook(
         row.max_retries = int(max_retries)
         if password:
             row.password_hash = hash_password(password)
+        row.proxy_enabled = bool(proxy_enabled)
+        row.proxy_host = (proxy_host or "").strip()
+        row.proxy_port = int(proxy_port or 0)
+        row.proxy_login = (proxy_login or "").strip()
+        if not row.proxy_login:
+            row.proxy_password = ""
+        elif proxy_password:
+            row.proxy_password = proxy_password
         row.updated_at = utcnow()
         session.flush()
         return from_row(row)

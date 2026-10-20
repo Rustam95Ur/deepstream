@@ -162,6 +162,82 @@ def cmd_delete(ctx: Ctx, args: argparse.Namespace) -> None:
     emit_result(ctx, "удалена", {"id": args.id})
 
 
+def cmd_webhook(ctx: Ctx, args: argparse.Namespace) -> None:
+    """Same incident as the console button, for chosen cameras or the whole registry."""
+    from fastapi import HTTPException
+
+    from app.cli.console import CliError, emit_json, http_detail
+    from app.services.camera_webhook import send_current_stream
+    from app.storage import get_store
+
+    ids = [item.strip() for item in args.ids if item.strip()]
+    if args.all and ids:
+        raise CliError("Укажите либо id камер, либо --all")
+    if args.enabled and not args.all:
+        raise CliError("--enabled работает только вместе с --all")
+    if args.all:
+        require_yes(args.yes, "всех камер в вебхук")
+        cameras = get_store().list_cameras()
+        if args.enabled:
+            cameras = [cam for cam in cameras if cam.enabled]
+        ids = [cam.id for cam in cameras]
+    else:
+        seen: set[str] = set()
+        unique: list[str] = []
+        for cam_id in ids:
+            if cam_id not in seen:
+                seen.add(cam_id)
+                unique.append(cam_id)
+        ids = unique
+    if not ids:
+        raise CliError("Нечего отправлять: укажите id или --all")
+
+    results: list[dict[str, object]] = []
+    total = len(ids)
+    for index, cam_id in enumerate(ids, start=1):
+        if not ctx.as_json:
+            print(f"[{index}/{total}] {cam_id}", flush=True)
+        try:
+            sent = send_current_stream(cam_id)
+        except HTTPException as exc:
+            row = {
+                "id": cam_id,
+                "ok": False,
+                "event_id": "",
+                "queued": 0,
+                "error": http_detail(exc),
+            }
+        else:
+            row = {
+                "id": cam_id,
+                "ok": True,
+                "event_id": sent.event_id,
+                "queued": sent.queued,
+                "error": "",
+            }
+        results.append(row)
+        if ctx.as_json:
+            continue
+        if row["ok"]:
+            print(f"  в очереди: {row['queued']}  событие: {row['event_id']}")
+        else:
+            print(f"  ошибка: {row['error']}")
+
+    ok_count = sum(1 for row in results if row["ok"])
+    if ctx.as_json:
+        emit_json(
+            {
+                "ok": ok_count,
+                "failed": total - ok_count,
+                "items": results,
+            }
+        )
+    else:
+        print(f"готово: {ok_count} из {total}")
+    if ok_count != total:
+        raise SystemExit(1)
+
+
 def cmd_test(ctx: Ctx, args: argparse.Namespace) -> None:
     from app.cli.console import CliError
 
@@ -201,7 +277,7 @@ def _triggers(parser: argparse.ArgumentParser, *, inherit: bool) -> None:
 
 def register(sub: argparse._SubParsersAction) -> None:
     parser = sub.add_parser(
-        "cameras", help="Камеры: список, создание, правка, удаление"
+        "cameras", help="Камеры: список, создание, правка, отправка в вебхук, удаление"
     )
     commands = parser.add_subparsers(dest="action", required=True)
 
@@ -263,6 +339,32 @@ def register(sub: argparse._SubParsersAction) -> None:
     delete.add_argument("id")
     delete.add_argument("--yes", action="store_true", help="Подтвердить удаление")
     delete.set_defaults(func=cmd_delete)
+
+    hook = commands.add_parser(
+        "webhook",
+        help="Отправить текущий поток в вебхук, как кнопка в реестре",
+    )
+    hook.add_argument(
+        "ids",
+        nargs="*",
+        help="Одна или несколько камер. Пустой список — только вместе с --all",
+    )
+    hook.add_argument(
+        "--all",
+        action="store_true",
+        help="Все камеры реестра. Нужен --yes",
+    )
+    hook.add_argument(
+        "--enabled",
+        action="store_true",
+        help="Вместе с --all: только включённые камеры",
+    )
+    hook.add_argument(
+        "--yes",
+        action="store_true",
+        help="Подтвердить массовую отправку",
+    )
+    hook.set_defaults(func=cmd_webhook)
 
     test = commands.add_parser(
         "test", help="Создать несколько тестовых камер на один URI"

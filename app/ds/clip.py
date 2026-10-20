@@ -27,9 +27,9 @@ from app.ds.ring_buffer import (
 logger = logging.getLogger(__name__)
 
 _LOCK_TTL_SEC = 60 * 30
-# Fit inside this frame. Aspect stays; nothing is cropped or stretched.
-_MAX_WIDTH = 854
-_MAX_HEIGHT = 480
+# Output canvas. The picture is scaled to fit inside it; the rest is padding.
+_OUT_WIDTH = 720
+_OUT_HEIGHT = 480
 _event_locks: dict[str, float] = {}
 _event_locks_mu = threading.Lock()
 
@@ -52,10 +52,10 @@ def _even(value: float) -> int:
 
 
 def clip_output_size(width: int, height: int) -> tuple[int, int]:
-    """Largest even frame that fits in 854×480 and keeps the source aspect."""
+    """Picture size inside a 720×480 canvas. Aspect stays; nothing is cropped."""
     if width <= 0 or height <= 0:
-        return _MAX_WIDTH, _MAX_HEIGHT
-    scale = min(_MAX_WIDTH / width, _MAX_HEIGHT / height, 1.0)
+        return _OUT_WIDTH, _OUT_HEIGHT
+    scale = min(_OUT_WIDTH / width, _OUT_HEIGHT / height, 1.0)
     return _even(width * scale), _even(height * scale)
 
 
@@ -104,16 +104,23 @@ def probe_video_size(source: str | Path, *, timeout: float = 12.0) -> tuple[int,
 
 
 def _encode_scaled(width: int, height: int) -> list[str]:
-    if width > 0 and height > 0:
-        out_w, out_h = clip_output_size(width, height)
-        scale = f"scale={out_w}:{out_h}"
-        logger.info("clip encode %sx%s -> %sx%s", width, height, out_w, out_h)
-    else:
-        scale = (
-            f"scale={_MAX_WIDTH}:{_MAX_HEIGHT}"
-            ":force_original_aspect_ratio=decrease:force_divisible_by=2"
-        )
-        logger.info("clip encode size unknown, fit inside %sx%s", _MAX_WIDTH, _MAX_HEIGHT)
+    """ffmpeg: fit the picture in 720×480, pad the rest, drop audio."""
+    picture_w, picture_h = clip_output_size(width, height)
+    logger.info(
+        "clip encode %sx%s -> picture %sx%s canvas %sx%s",
+        width or "?",
+        height or "?",
+        picture_w,
+        picture_h,
+        _OUT_WIDTH,
+        _OUT_HEIGHT,
+    )
+    # scale keeps the aspect ratio; pad fills 720×480. -an drops audio.
+    scale = (
+        f"scale={_OUT_WIDTH}:{_OUT_HEIGHT}:force_original_aspect_ratio=decrease,"
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2,"
+        f"pad={_OUT_WIDTH}:{_OUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2"
+    )
     return [
         "-vf",
         scale,

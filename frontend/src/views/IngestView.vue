@@ -21,7 +21,14 @@ const form = reactive({
   password: "",
   timeout_sec: 5,
   max_retries: 5,
+  proxy_enabled: false,
+  proxy_host: "",
+  proxy_port: "" as string | number,
+  proxy_login: "",
+  proxy_password: "",
 });
+const proxyAuthConfigured = ref(false);
+const savedProxyLogin = ref("");
 
 const canSync = computed(
   () => hooks.value.some((hook) => hook.enabled && Boolean(hook.url.trim())),
@@ -69,6 +76,13 @@ function openNew() {
   form.password = "";
   form.timeout_sec = 5;
   form.max_retries = 5;
+  form.proxy_enabled = false;
+  form.proxy_host = "";
+  form.proxy_port = "";
+  form.proxy_login = "";
+  form.proxy_password = "";
+  proxyAuthConfigured.value = false;
+  savedProxyLogin.value = "";
   showForm.value = true;
 }
 
@@ -81,6 +95,13 @@ function openEdit(hook: Webhook) {
   form.password = "";
   form.timeout_sec = hook.timeout_sec;
   form.max_retries = hook.max_retries;
+  form.proxy_enabled = Boolean(hook.proxy_enabled);
+  form.proxy_host = hook.proxy_host || "";
+  form.proxy_port = hook.proxy_port || "";
+  form.proxy_login = hook.proxy_login || "";
+  form.proxy_password = "";
+  proxyAuthConfigured.value = Boolean(hook.proxy_auth_configured);
+  savedProxyLogin.value = hook.proxy_login || "";
   showForm.value = true;
 }
 
@@ -101,6 +122,32 @@ async function saveHook() {
     store.error = "Пароль минимум 8 символов";
     return;
   }
+  const proxyHost = form.proxy_host.trim();
+  const proxyLogin = form.proxy_login.trim();
+  const proxyPassword = form.proxy_password.trim();
+  const proxyPort = Number(form.proxy_port);
+  if (form.proxy_enabled) {
+    if (!proxyHost) {
+      store.error = "Укажите хост прокси";
+      return;
+    }
+    if (!Number.isInteger(proxyPort) || proxyPort < 1 || proxyPort > 65535) {
+      store.error = "Укажите порт прокси (1–65535)";
+      return;
+    }
+    if (proxyPassword && !proxyLogin) {
+      store.error = "Укажите логин прокси";
+      return;
+    }
+    if (proxyLogin && !proxyPassword) {
+      const keepSaved =
+        proxyAuthConfigured.value && proxyLogin === savedProxyLogin.value.trim();
+      if (!keepSaved) {
+        store.error = "Укажите пароль прокси";
+        return;
+      }
+    }
+  }
   savingHook.value = true;
   try {
     const body = {
@@ -111,6 +158,11 @@ async function saveHook() {
       password: password ? password : editingId.value ? null : "",
       timeout_sec: Number(form.timeout_sec) || 5,
       max_retries: Number(form.max_retries) || 0,
+      proxy_enabled: form.proxy_enabled,
+      proxy_host: proxyHost,
+      proxy_port: Number.isInteger(proxyPort) ? proxyPort : 0,
+      proxy_login: proxyLogin,
+      proxy_password: proxyPassword ? proxyPassword : editingId.value ? null : "",
     };
     if (editingId.value) {
       await api.updateWebhook(editingId.value, body);
@@ -259,6 +311,7 @@ Content-Type: application/json
                   <span class="pill" :class="hook.enabled ? 'pill-ok' : 'pill-err'">
                     {{ hook.enabled ? "вкл" : "выкл" }}
                   </span>
+                  <span v-if="hook.proxy_enabled" class="pill pill-muted">прокси</span>
                 </td>
                 <td class="uri">{{ hook.url }}</td>
                 <td>{{ hook.login || "—" }}</td>
@@ -332,6 +385,50 @@ Content-Type: application/json
           <div class="span-2">
             <SwitchField id="wh-enabled" v-model="form.enabled" label="Включён" />
           </div>
+          <div class="span-2">
+            <SwitchField id="wh-proxy" v-model="form.proxy_enabled" label="Прокси-сервер" />
+            <p v-if="form.proxy_enabled" class="field-hint">
+              Исходящие запросы этого webhook пойдут через прокси.
+            </p>
+          </div>
+          <template v-if="form.proxy_enabled">
+            <Field
+              id="wh-proxy-host"
+              v-model="form.proxy_host"
+              label="Хост"
+              required
+              autocomplete="off"
+              hint="Например, 10.0.0.8"
+            />
+            <Field
+              id="wh-proxy-port"
+              v-model="form.proxy_port"
+              label="Порт"
+              type="number"
+              required
+              min="1"
+              max="65535"
+            />
+            <Field
+              id="wh-proxy-login"
+              v-model="form.proxy_login"
+              label="Логин прокси"
+              autocomplete="off"
+              hint="Необязательно"
+            />
+            <Field
+              id="wh-proxy-password"
+              v-model="form.proxy_password"
+              label="Пароль прокси"
+              type="password"
+              autocomplete="new-password"
+              :hint="
+                editingId && proxyAuthConfigured
+                  ? 'Пусто = не менять'
+                  : 'Необязательно, если прокси без авторизации'
+              "
+            />
+          </template>
         </div>
         <div class="card-foot end">
           <div class="row">

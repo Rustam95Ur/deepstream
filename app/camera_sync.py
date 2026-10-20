@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from app.billing import license_lock_detail, license_ok
-from app.ds.sinks.http_sink import post_json_data
+from app.ds.sinks.http_sink import post_json_data, proxy_from_settings
 from app.storage import get_store
 from app.webhooks import list_enabled_webhooks
 
@@ -114,8 +114,29 @@ def push_cameras_to_webhooks() -> dict[str, Any]:
             )
             continue
         timeout = max(_SYNC_TIMEOUT_S, float(hook.timeout_sec or 5.0))
+        proxy, proxy_err = proxy_from_settings(
+            enabled=hook.proxy_enabled,
+            host=hook.proxy_host,
+            port=hook.proxy_port,
+            username=hook.proxy_login,
+            password=hook.proxy_password,
+        )
+        if proxy_err:
+            results.append(
+                {
+                    "webhook_id": hook.id,
+                    "webhook_name": hook.name,
+                    "url": url,
+                    "ok": False,
+                    "created": 0,
+                    "updated": 0,
+                    "skipped": 0,
+                    "error": proxy_err,
+                }
+            )
+            continue
         ok, status, error, data = post_json_data(
-            url, body, headers=headers, timeout_sec=timeout
+            url, body, headers=headers, timeout_sec=timeout, proxy=proxy
         )
         created = int((data or {}).get("created") or 0) if ok else 0
         updated = int((data or {}).get("updated") or 0) if ok else 0

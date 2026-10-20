@@ -73,6 +73,12 @@ def main(argv: list[str] | None = None) -> None:
     ctx = Ctx(as_json=bool(args.json))
     if getattr(args, "action", "") == "delete" and not getattr(args, "yes", False):
         fail(ctx, "Удаление необратимо. Повторите команду с --yes")
+    if (
+        getattr(args, "action", "") == "webhook"
+        and getattr(args, "all", False)
+        and not getattr(args, "yes", False)
+    ):
+        fail(ctx, "Массовая отправка затронет камеры реестра. Повторите с --all --yes")
     try:
         prepare()
         args.func(ctx, args)

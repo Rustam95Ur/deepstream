@@ -19,7 +19,7 @@ from app.ds.payload import (
     missing_video_reason,
     requires_video,
 )
-from app.ds.sinks.http_sink import post_json, post_multipart
+from app.ds.sinks.http_sink import HttpProxy, post_json, post_multipart, proxy_from_settings
 from app.history import record_send
 from app.logging_config import log_extra
 from app.minio_store import get_minio_store
@@ -33,7 +33,11 @@ logger = logging.getLogger(__name__)
 MAX_BACKOFF_S = 60.0
 VIDEO_POST_TIMEOUT_S = 120.0
 
-_SKIP_DELIVERY = frozenset({"webhook disabled", "http sink disabled"})
+_SKIP_DELIVERY = frozenset({
+    "webhook disabled",
+    "http sink disabled",
+    "прокси включён, но не заданы хост или порт",
+})
 
 # Inline status literals so Postgres can use ix_outbound_jobs_due.
 # Select id only: loading payload JSONB under FOR UPDATE timed out at 5s.
@@ -197,6 +201,18 @@ def deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
         return False, None, skip
     url = hook.url if hook else job.url
     timeout = hook.timeout_sec if hook else 5.0
+    proxy: HttpProxy | None = None
+    if hook is not None:
+        proxy, proxy_err = proxy_from_settings(
+            enabled=hook.proxy_enabled,
+            host=hook.proxy_host,
+            port=hook.proxy_port,
+            username=hook.proxy_login,
+            password=hook.proxy_password,
+        )
+        if proxy_err:
+            logger.error("webhook skip proxy event=%s reason=%s", job.event_id, proxy_err)
+            return False, None, proxy_err
     outbound = to_smartbox_ingest(job.payload or {})
     outbound.pop(CLIP_META_KEY, None)
     event_id = str(job.event_id or "")
@@ -224,7 +240,13 @@ def deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
             url,
         )
         body = json.dumps(outbound, ensure_ascii=False).encode("utf-8")
-        return post_json(url, body, headers=headers, timeout_sec=max(float(timeout), 30.0))
+        return post_json(
+            url,
+            body,
+            headers=headers,
+            timeout_sec=max(float(timeout), 30.0),
+            proxy=proxy,
+        )
 
     clip_data, filename, clip_why = clip_bytes_for_event(
         event_id, job.payload if isinstance(job.payload, dict) else None
@@ -248,12 +270,13 @@ def deliver(job: OutboundJobRow) -> tuple[bool, int | None, str]:
             files={"video": (filename, clip_data, "video/mp4")},
             headers=headers,
             timeout_sec=send_timeout,
+            proxy=proxy,
         )
 
     why = "video not required (stream_silent / no algo_model)"
     logger.info("webhook json event=%s reason=%s url=%s", event_id, why, url)
     body = json.dumps(outbound, ensure_ascii=False).encode("utf-8")
-    return post_json(url, body, headers=headers, timeout_sec=timeout)
+    return post_json(url, body, headers=headers, timeout_sec=timeout, proxy=proxy)
 
 
 def _non_retryable(error: str) -> bool:

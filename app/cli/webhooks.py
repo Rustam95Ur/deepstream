@@ -36,6 +36,11 @@ def webhook_dict(hook: Webhook) -> dict[str, Any]:
         "auth_configured": hook.auth_configured,
         "timeout_sec": hook.timeout_sec,
         "max_retries": hook.max_retries,
+        "proxy_enabled": hook.proxy_enabled,
+        "proxy_host": hook.proxy_host,
+        "proxy_port": hook.proxy_port,
+        "proxy_login": hook.proxy_login,
+        "proxy_auth_configured": hook.proxy_auth_configured,
         "created_at": hook.created_at,
         "updated_at": hook.updated_at,
     }
@@ -67,6 +72,11 @@ def _save(
         password=password,
         timeout_sec=hook.timeout_sec if timeout_sec is None else timeout_sec,
         max_retries=hook.max_retries if max_retries is None else max_retries,
+        proxy_enabled=hook.proxy_enabled,
+        proxy_host=hook.proxy_host,
+        proxy_port=hook.proxy_port,
+        proxy_login=hook.proxy_login,
+        proxy_password=None,
     )
     if next_login and not hook.auth_configured and not body.password:
         raise CliError("Для нового логина нужен --password (минимум 8 символов)")
@@ -79,6 +89,11 @@ def _save(
         max_retries=body.max_retries,
         login=None if login is None else body.login,
         password=body.password,
+        proxy_enabled=body.proxy_enabled,
+        proxy_host=body.proxy_host,
+        proxy_port=body.proxy_port,
+        proxy_login=body.proxy_login,
+        proxy_password=body.proxy_password,
     )
     return _require(saved, hook.id)
 
@@ -95,6 +110,7 @@ def cmd_list(ctx: Ctx, _args: argparse.Namespace) -> None:
             ("url", "url"),
             ("login", "логин"),
             ("auth_configured", "пароль"),
+            ("proxy_enabled", "прокси"),
         ],
         empty="Webhook нет",
     )

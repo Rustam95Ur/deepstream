@@ -67,6 +67,11 @@ class WebhookRow(Base):
     password_hash: Mapped[str] = mapped_column(Text, default="")
     timeout_sec: Mapped[float] = mapped_column(Float, default=5.0)
     max_retries: Mapped[int] = mapped_column(Integer, default=5)
+    proxy_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    proxy_host: Mapped[str] = mapped_column(String(255), default="")
+    proxy_port: Mapped[int] = mapped_column(Integer, default=0)
+    proxy_login: Mapped[str] = mapped_column(String(128), default="")
+    proxy_password: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

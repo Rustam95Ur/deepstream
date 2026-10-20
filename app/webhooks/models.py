@@ -18,12 +18,21 @@ class Webhook:
     auth_configured: bool
     timeout_sec: float
     max_retries: int
+    proxy_enabled: bool
+    proxy_host: str
+    proxy_port: int
+    proxy_login: str
+    proxy_password: str
     created_at: datetime
     updated_at: datetime
 
     @property
     def max_attempts(self) -> int:
         return max(1, int(self.max_retries) + 1)
+
+    @property
+    def proxy_auth_configured(self) -> bool:
+        return bool((self.proxy_login or "").strip() and (self.proxy_password or "").strip())
 
 
 def from_row(row: WebhookRow) -> Webhook:
@@ -38,6 +47,11 @@ def from_row(row: WebhookRow) -> Webhook:
         ),
         timeout_sec=float(row.timeout_sec or 5.0),
         max_retries=int(row.max_retries or 0),
+        proxy_enabled=bool(row.proxy_enabled),
+        proxy_host=(row.proxy_host or "").strip(),
+        proxy_port=int(row.proxy_port or 0),
+        proxy_login=(row.proxy_login or "").strip(),
+        proxy_password=row.proxy_password or "",
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
