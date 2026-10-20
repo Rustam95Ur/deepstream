@@ -36,7 +36,6 @@ const form = reactive({
   resolution_height: 720,
   fps: 25,
   enabled: true,
-  allow_preprocessing: false,
   usage_modules: [2] as number[],
   inheritTriggers: true,
   enabled_triggers: [...NODE_TRIGGERS] as string[],
@@ -52,7 +51,6 @@ function applyCamera(cam: (typeof store.cameras)[number]) {
   form.resolution_height = profile.resolution_height;
   form.fps = profile.fps;
   form.enabled = cam.enabled;
-  form.allow_preprocessing = profile.allow_preprocessing;
   form.usage_modules = Array.isArray(cam.meta?.usage_modules) ? profile.usage_modules : [2];
   form.inheritTriggers = cam.enabled_triggers == null;
   form.enabled_triggers = cam.enabled_triggers ?? [...NODE_TRIGGERS];
@@ -108,7 +106,6 @@ function profileFields() {
     resolution_width: Number(form.resolution_width) || 1280,
     resolution_height: Number(form.resolution_height) || 720,
     fps: Number(form.fps) || 25,
-    allow_preprocessing: form.allow_preprocessing,
     usage_modules: form.usage_modules,
   });
 }
@@ -129,13 +126,15 @@ async function onSubmit() {
     } else {
       const cam = store.cameras.find((c) => c.id === cameraId.value);
       if (!cam) return;
+      const meta = { ...cam.meta, ...profileFields() };
+      delete meta.allow_preprocessing;
       await api.updateCamera(cam.id, {
         ...cam,
         name: form.name.trim() || cam.id,
         main_uri: uri,
         enabled: form.enabled,
         enabled_triggers: selectedTriggers(),
-        meta: { ...cam.meta, ...profileFields() },
+        meta,
       });
       flash("Камера обновлена");
     }
@@ -271,13 +270,6 @@ async function uploadImport() {
       <Field id="cam-h" v-model="form.resolution_height" label="Высота разрешения" type="number" required />
       <div class="span-2 switch-cell">
         <SwitchField id="cam-enabled" v-model="form.enabled" label="Активен" />
-      </div>
-      <div class="span-2 switch-cell">
-        <SwitchField
-          id="cam-pre"
-          v-model="form.allow_preprocessing"
-          label="Разрешить предварительную обработку"
-        />
       </div>
       <div class="span-2">
         <p class="form-label">Модули использования</p>

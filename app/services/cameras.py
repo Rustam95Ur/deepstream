@@ -35,7 +35,6 @@ TEST_META = {
     "resolution_width": 1280,
     "resolution_height": 720,
     "fps": 25,
-    "allow_preprocessing": False,
     "usage_modules": [2],
 }
 

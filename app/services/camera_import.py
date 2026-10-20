@@ -20,10 +20,6 @@ _HEADERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("resolution_width", ("ширина разрешения", "ширина", "resolution_width")),
     ("resolution_height", ("высота разрешения", "высота", "resolution_height")),
     ("enabled", ("активен", "enabled", "статус")),
-    (
-        "allow_preprocessing",
-        ("разрешить предварительную обработку", "предобработка", "allow_preprocessing"),
-    ),
     ("usage_modules", ("модули использования", "модули", "usage_modules")),
     ("scenarios", ("сценарии", "сценарий", "enabled_triggers")),
 )
@@ -94,7 +90,7 @@ def template_bytes() -> bytes:
     headers = ["Название", "RTSP ссылка"]
     help_rows: list[list[object]] = [
         [
-            "Идентификатор камеры в файл не вносится. Остальные настройки выставляются по умолчанию: протокол RTSP, 25 кадров/с, 1280×720, камера активна, предобработка выключена, модуль «Инциденты», сценарии как у ноды.",
+            "Идентификатор камеры в файл не вносится. Остальные настройки выставляются по умолчанию: протокол RTSP, 25 кадров/с, 1280×720, камера активна, модуль «Инциденты», сценарии как у ноды.",
             "",
             "",
             "",
@@ -195,11 +191,6 @@ def _row_to_camera(cells: list[str], columns: dict[str, int]) -> CameraIn:
                 _cell(cells, columns, "fps"),
                 default=25,
                 label="Кадров в секунду",
-            ),
-            "allow_preprocessing": _flag(
-                _cell(cells, columns, "allow_preprocessing"),
-                default=False,
-                label="Разрешить предварительную обработку",
             ),
             "usage_modules": _modules(_cell(cells, columns, "usage_modules")),
         },

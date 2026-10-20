@@ -224,7 +224,6 @@ Content-Type: application/json
   "resolution_width": 1280,
   "resolution_height": 720,
   "fps": 25,
-  "allow_preprocessing": false,
   "usage_modules": [2]
 }</pre>
       </div>

@@ -17,7 +17,6 @@ export interface CameraProfile {
   resolution_width: number;
   resolution_height: number;
   fps: number;
-  allow_preprocessing: boolean;
   usage_modules: number[];
 }
 
@@ -36,7 +35,6 @@ export function cameraProfile(cam?: Pick<Camera, "meta"> | null): CameraProfile 
     resolution_width: num(meta.resolution_width, 1280),
     resolution_height: num(meta.resolution_height, 720),
     fps: num(meta.fps, 25),
-    allow_preprocessing: Boolean(meta.allow_preprocessing),
     usage_modules: modules,
   };
 }
@@ -47,7 +45,6 @@ export function cameraProfileMeta(profile: CameraProfile): Record<string, unknow
     resolution_width: Number(profile.resolution_width) || 1280,
     resolution_height: Number(profile.resolution_height) || 720,
     fps: Number(profile.fps) || 25,
-    allow_preprocessing: Boolean(profile.allow_preprocessing),
     usage_modules: [...profile.usage_modules],
   };
 }
