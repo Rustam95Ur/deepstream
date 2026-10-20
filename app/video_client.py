@@ -24,6 +24,13 @@ from app.video_auth import video_token
 logger = logging.getLogger(__name__)
 
 
+class VideoRequestError(RuntimeError):
+    def __init__(self, status: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status = status
+        self.detail = detail
+
+
 def video_base_url() -> str:
     return get_runtime_env().video_url
 
@@ -175,10 +182,16 @@ def _parse_health(raw: dict[str, Any]) -> VideoHealthOut:
     )
 
 
-def _request(method: str, path: str, *, timeout: float = 8.0) -> dict[str, Any]:
+def _request(
+    method: str,
+    path: str,
+    *,
+    timeout: float = 8.0,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     base = video_base_url()
     if not base:
-        raise RuntimeError("NEXUS_DS_VIDEO_URL is not set")
+        raise VideoRequestError(503, "видео-сервис не настроен")
     headers = {
         "Accept": "application/json",
         "User-Agent": "nexus-deepstream-api/0.1",
@@ -186,18 +199,36 @@ def _request(method: str, path: str, *, timeout: float = 8.0) -> dict[str, Any]:
     token = video_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    body: bytes | None = None
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
     req = urllib.request.Request(
         f"{base}{path}",
+        data=body,
         method=method,
         headers=headers,
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = resp.read().decode("utf-8")
-    if not body:
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        try:
+            parsed = json.loads(detail)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict) and parsed.get("detail"):
+            detail = str(parsed["detail"])
+        raise VideoRequestError(int(exc.code or 502), detail or "видео-сервис ответил ошибкой") from exc
+    if not raw:
         return {}
-    data = json.loads(body)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise VideoRequestError(502, "видео-сервис вернул неожиданный ответ") from exc
     if not isinstance(data, dict):
-        raise ValueError("video response must be a JSON object")
+        raise VideoRequestError(502, "видео-сервис вернул неожиданный ответ")
     return data
 
 
@@ -229,6 +260,23 @@ def worker_stop() -> WorkerStatusOut:
     except Exception as exc:
         logger.warning("video stop failed: %s", exc)
         return _offline(f"video stop failed: {exc}")
+
+
+def lab_start(scenario: str = "") -> dict[str, Any]:
+    if not video_configured():
+        raise VideoRequestError(503, "видео-сервис не настроен")
+    return _request(
+        "POST",
+        "/scenario-lab/start",
+        payload={"scenario": scenario or ""},
+        timeout=20.0,
+    )
+
+
+def lab_cancel() -> dict[str, Any]:
+    if not video_configured():
+        raise VideoRequestError(503, "видео-сервис не настроен")
+    return _request("POST", "/scenario-lab/cancel", timeout=15.0)
 
 
 def notify_reload() -> WorkerStatusOut | None:

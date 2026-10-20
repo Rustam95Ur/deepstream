@@ -13,6 +13,7 @@ import UsersView from "./views/UsersView.vue";
 import UserFormView from "./views/UserFormView.vue";
 import DocsView from "./views/DocsView.vue";
 import PreviewLabView from "./views/PreviewLabView.vue";
+import ScenarioLabView from "./views/ScenarioLabView.vue";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -31,6 +32,7 @@ export const router = createRouter({
         { path: "node", redirect: { name: "settings" } },
         { path: "ingest", name: "ingest", component: IngestView },
         { path: "triggers", name: "triggers", component: TriggersView },
+        { path: "lab", name: "lab", component: ScenarioLabView },
         { path: "history", name: "history", component: HistoryView },
         { path: "preview", name: "preview", component: PreviewLabView },
         { path: "users", name: "users", component: UsersView },

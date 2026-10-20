@@ -15,6 +15,7 @@ from app.api.auth import router as auth_router
 from app.api.cameras import router as cameras_router
 from app.api.errors import register_error_handlers
 from app.api.history import router as history_router
+from app.api.scenario_lab import router as scenario_lab_router
 from app.api.public_clips import router as public_clips_router
 from app.api.node import router as node_router
 from app.api.users import router as users_router
@@ -120,6 +121,7 @@ app.include_router(cameras_router)
 app.include_router(webhooks_router)
 app.include_router(users_router)
 app.include_router(history_router)
+app.include_router(scenario_lab_router)
 app.include_router(web_router)
 register_error_handlers(app)
 

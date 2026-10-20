@@ -287,6 +287,57 @@ export interface VideoHealth {
   recent_errors?: LogLine[];
 }
 
+export interface LabHit {
+  trigger_type: string;
+  offset_s: number | null;
+}
+
+export interface LabVideo {
+  scenario: string;
+  event_id: string;
+  camera_name: string;
+  created_at: string;
+  size: number;
+}
+
+export interface LabResult {
+  scenario: string;
+  event_id: string;
+  camera_name: string;
+  verdict: string;
+  detected: string[];
+  hits: LabHit[];
+  error: string;
+  finished_at: string;
+}
+
+export interface LabRun {
+  status: string;
+  scenario: string;
+  started_at: string;
+  finished_at: string;
+  paused_live: boolean;
+  current_scenario: string;
+  current_event: string;
+  current_file: string;
+  error: string;
+  results: LabResult[];
+}
+
+export interface LabScenario {
+  id: string;
+  label: string;
+  hint: string;
+  ready: boolean;
+  videos: LabVideo[];
+}
+
+export interface LabCatalog {
+  root: string;
+  run: LabRun;
+  scenarios: LabScenario[];
+}
+
 export interface HistoryQuery {
   since?: string;
   until?: string;

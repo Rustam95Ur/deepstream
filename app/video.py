@@ -7,7 +7,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import text
 
 from app.billing import apply_runtime_lock, last_billing_check, license_ok, validate_billing_key
@@ -30,6 +30,9 @@ from app.minio_store import advertised_public_base
 from app.storage import get_store
 from app.video_auth import require_video_token, video_token
 from app.webhooks import get_outbound_worker
+from app.scenario_lab import LabError, mark_stale_run
+from app.scenario_lab_run import cancel_run, shutdown_run, start_run
+from app.schemas.scenario_lab import LabRunOut, LabStartIn
 from app.worker import get_manager
 
 configure_logging(service="nexus-deepstream", role="video")
@@ -196,9 +199,11 @@ async def lifespan(_app: FastAPI):
     )
     if not check.valid:
         logger.warning("license lock — pipeline and ring-buffer not started")
+    mark_stale_run()
     _start_watch()
     yield
     _stop_watch()
+    shutdown_run()
     get_manager().stop()
     get_ring_buffer().stop()
     get_outbound_worker().stop()
@@ -254,6 +259,21 @@ def worker_reload() -> WorkerStatusOut:
 @app.get("/video/health", response_model=VideoHealthOut, dependencies=[VideoAuth])
 def get_video_health() -> VideoHealthOut:
     return video_health()
+
+
+@app.post("/scenario-lab/start", response_model=LabRunOut, dependencies=[VideoAuth])
+def scenario_lab_start(body: LabStartIn) -> LabRunOut:
+    if not license_ok():
+        raise HTTPException(status_code=403, detail="лицензия не активна")
+    try:
+        return LabRunOut.model_validate(start_run(body.scenario or ""))
+    except LabError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+
+
+@app.post("/scenario-lab/cancel", response_model=LabRunOut, dependencies=[VideoAuth])
+def scenario_lab_cancel() -> LabRunOut:
+    return LabRunOut.model_validate(cancel_run())
 
 
 @app.post(

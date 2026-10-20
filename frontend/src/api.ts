@@ -1,4 +1,4 @@
-import type { BillingCheck, Camera, CameraImportResult, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
+import type { BillingCheck, Camera, CameraImportResult, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, LabCatalog, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -195,4 +195,14 @@ export const api = {
     }),
   deleteUser: (id: string) =>
     request<void>(`/api/v1/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  scenarioLab: () => request<LabCatalog>("/api/v1/scenario-lab"),
+  scenarioClipUrl: (eventId: string) =>
+    `/api/v1/public/clips/${encodeURIComponent(eventId)}.mp4`,
+  runScenarioLab: (scenario = "") =>
+    request<LabCatalog>("/api/v1/scenario-lab/run", {
+      method: "POST",
+      body: JSON.stringify({ scenario }),
+    }),
+  cancelScenarioLab: () =>
+    request<LabCatalog>("/api/v1/scenario-lab/cancel", { method: "POST" }),
 };

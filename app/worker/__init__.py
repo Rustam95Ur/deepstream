@@ -86,6 +86,11 @@ class PipelineManager:
         self._reload_requested.set()
 
     def start(self) -> WorkerStatusOut:
+        from app.scenario_lab_run import gpu_held
+
+        if gpu_held():
+            logger.info("scenario lab holds DeepStream — live start skipped")
+            return self.status()
         with self._lock:
             self._active = True
             if self._thread and self._thread.is_alive():
@@ -97,6 +102,10 @@ class PipelineManager:
             )
             self._thread.start()
         return self.status()
+
+    def thread_alive(self) -> bool:
+        thread = self._thread
+        return bool(thread and thread.is_alive())
 
     def stop(self) -> WorkerStatusOut:
         self._active = False
