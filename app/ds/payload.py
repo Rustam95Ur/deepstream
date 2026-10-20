@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -46,6 +47,16 @@ def _float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _optional_int(value: Any) -> int | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number >= 0 else None
+
+
 def ipc_addr_from_uri(uri: str) -> str:
     """Host (+ non-default port) + path, no credentials — Campus ``rtsp_url__icontains``."""
     raw = _str(uri)
@@ -82,7 +93,17 @@ def clip_from_payload(payload: dict[str, Any]) -> dict[str, str]:
     )
     key = _str(payload.get("video_key") or raw.get("key") or extra.get("key"))
     path = _str(payload.get("clip_path") or raw.get("path") or extra.get("path"))
-    return {"url": url, "bucket": bucket, "key": key, "path": path}
+    size = _optional_int(
+        raw.get("size")
+        if raw.get("size") not in (None, "")
+        else extra.get("size")
+        if extra.get("size") not in (None, "")
+        else payload.get("video_bytes")
+    )
+    out = {"url": url, "bucket": bucket, "key": key, "path": path}
+    if size is not None:
+        out["size"] = str(size)
+    return out
 
 
 def requires_video(payload: dict[str, Any]) -> bool:
@@ -171,17 +192,30 @@ def attach_clip(
     bucket: str = "",
     key: str = "",
     path: str = "",
+    size: int | None = None,
 ) -> dict[str, Any]:
     payload["video_url"] = _str(url)
     payload["video_bucket"] = _str(bucket)
     payload["video_key"] = _str(key)
     payload["clip_path"] = _str(path)
-    payload["clip"] = {
+    nbytes = _optional_int(size)
+    if nbytes is None and payload["clip_path"]:
+        file_path = Path(payload["clip_path"])
+        if file_path.is_file():
+            try:
+                nbytes = file_path.stat().st_size
+            except OSError:
+                nbytes = None
+    clip = {
         "url": payload["video_url"],
         "bucket": payload["video_bucket"],
         "key": payload["video_key"],
         "path": payload["clip_path"],
     }
+    if nbytes is not None:
+        clip["size"] = str(nbytes)
+        payload["video_bytes"] = nbytes
+    payload["clip"] = clip
     return payload
 
 

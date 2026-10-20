@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
@@ -47,6 +48,31 @@ def clip_out(payload: dict[str, Any]) -> ClipOut:
     return ClipOut(url=clip["url"], bucket=clip["bucket"], key=clip["key"])
 
 
+def video_bytes_of(payload: dict[str, Any]) -> int | None:
+    """Clip size saved with the event, or the file / MinIO object if it is still there."""
+    clip = clip_from_payload(payload)
+    raw = str(clip.get("size") or "").strip()
+    if raw:
+        try:
+            number = int(raw)
+        except ValueError:
+            number = -1
+        if number >= 0:
+            return number
+    path = str(clip.get("path") or "").strip()
+    if path:
+        file_path = Path(path)
+        if file_path.is_file():
+            try:
+                return file_path.stat().st_size
+            except OSError:
+                pass
+    key = str(clip.get("key") or "").strip()
+    if key:
+        return get_minio_store().object_size(key)
+    return None
+
+
 def trigger_out(row: TriggerEventRow) -> TriggerEventOut:
     payload = dict(row.payload or {})
     clip = clip_out(payload)
@@ -61,6 +87,7 @@ def trigger_out(row: TriggerEventRow) -> TriggerEventOut:
         video_url=clip.url,
         video_bucket=clip.bucket,
         video_key=clip.key,
+        video_bytes=video_bytes_of(payload),
         created_at=row.created_at,
     )
 

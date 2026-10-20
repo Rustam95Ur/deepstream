@@ -325,6 +325,24 @@ class MinioStore:
             ),
         )
 
+    def object_size(self, key: str) -> int | None:
+        """Object length in bytes. ``None`` when MinIO is off or the key is missing."""
+        client = self._client_or_none()
+        object_key = (key or "").strip()
+        if client is None or not object_key:
+            return None
+        try:
+            resp = client.head_object(Bucket=self.config.bucket, Key=object_key)
+        except Exception:
+            logger.debug("MinIO head_object failed key=%s", object_key, exc_info=True)
+            return None
+        if "ContentLength" not in resp:
+            return None
+        try:
+            return int(resp["ContentLength"])
+        except (TypeError, ValueError):
+            return None
+
     def object_url(self, key: str) -> str:
         client = self._presign_client()
         if client is None:

@@ -85,6 +85,15 @@ function fmt(iso: string) {
   return d.toLocaleString("ru-RU");
 }
 
+function formatVideoSize(bytes: number | null | undefined) {
+  if (bytes == null || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+  const mb = bytes / (1024 * 1024);
+  const text = (mb >= 10 ? mb.toFixed(0) : mb.toFixed(1)).replace(".", ",");
+  return `${text} МБ`;
+}
+
 function dayStart(date: string) {
   return new Date(`${date}T00:00:00`).toISOString();
 }
@@ -325,6 +334,7 @@ onMounted(() => {
                 <th>Камера</th>
                 <th>Тип</th>
                 <th>Клип</th>
+                <th>Информация</th>
                 <th></th>
               </tr>
             </thead>
@@ -336,6 +346,9 @@ onMounted(() => {
                 <td>
                   <button v-if="hasClip(row)" type="button" class="ghost" @click="openClip(row)">Смотреть</button>
                   <span v-else class="muted" :title="clipSkipReason(row)">{{ clipSkipReason(row) || "нет" }}</span>
+                </td>
+                <td :title="row.video_bytes != null ? 'Размер видео' : undefined">
+                  {{ formatVideoSize(row.video_bytes) }}
                 </td>
                 <td class="td-action">
                   <button type="button" class="ghost" :disabled="busyId === row.event_id" @click="resend(row)">

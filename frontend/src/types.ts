@@ -183,6 +183,7 @@ export interface TriggerEvent {
   video_url: string;
   video_bucket: string;
   video_key: string;
+  video_bytes?: number | null;
   created_at: string;
 }
 

@@ -57,6 +57,7 @@ class TriggerEventOut(BaseModel):
     video_url: str = ""
     video_bucket: str = ""
     video_key: str = ""
+    video_bytes: int | None = None
     created_at: datetime
 
 
