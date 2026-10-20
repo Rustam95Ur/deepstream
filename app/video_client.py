@@ -13,6 +13,7 @@ from app.pipeline_status import as_log_lines
 from app.runtime_env import get_runtime_env
 from app.schemas import (
     CameraSkipOut,
+    CameraStreamOut,
     LogLineOut,
     RingCameraHealthOut,
     VideoHealthOut,
@@ -102,6 +103,44 @@ def _parse_status(raw: dict[str, Any]) -> WorkerStatusOut:
     )
 
 
+def _parse_streams(raw: object) -> list[CameraStreamOut]:
+    out: list[CameraStreamOut] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        cam_id = str(item.get("camera_id") or "").strip()
+        if not cam_id:
+            continue
+        age_raw = item.get("last_frame_age_s")
+        age: float | None
+        try:
+            age = float(age_raw) if age_raw is not None else None
+        except (TypeError, ValueError):
+            age = None
+        try:
+            silent_after = float(item.get("silent_after_s") or 30.0)
+        except (TypeError, ValueError):
+            silent_after = 30.0
+        try:
+            uptime = float(item.get("pipeline_uptime_s") or 0.0)
+        except (TypeError, ValueError):
+            uptime = 0.0
+        out.append(
+            CameraStreamOut(
+                camera_id=cam_id,
+                name=str(item.get("name") or cam_id),
+                pad=int(item.get("pad") or 0),
+                state=str(item.get("state") or ""),
+                last_frame_age_s=age,
+                silent_after_s=silent_after,
+                pipeline_uptime_s=uptime,
+            )
+        )
+    return out
+
+
 def _parse_health(raw: dict[str, Any]) -> VideoHealthOut:
     pipe = raw.get("pipeline") if isinstance(raw.get("pipeline"), dict) else {}
     cameras: list[RingCameraHealthOut] = []
@@ -131,6 +170,7 @@ def _parse_health(raw: dict[str, Any]) -> VideoHealthOut:
         ring_running=bool(raw.get("ring_running")),
         pipeline=status,
         cameras=cameras,
+        streams=_parse_streams(raw.get("streams")),
         recent_errors=errors,
     )
 

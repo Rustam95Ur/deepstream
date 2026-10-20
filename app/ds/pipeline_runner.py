@@ -11,6 +11,8 @@ from typing import Any
 from app.ds.config import AppConfig, CameraConfig
 from app.ds.pgie_config import write_pgie_config, write_pose_config, write_source_config
 from app.ds.probe import build_probe
+from app.ds.stream_status import bind as bind_stream_status
+from app.ds.stream_status import unbind as unbind_stream_status
 from app.ds.triggers import TriggerEngine
 from app.runtime_env import get_runtime_env
 
@@ -347,8 +349,10 @@ def run_pipeline(
             target=_interrupt_watch, name="ds-interrupt", daemon=True
         ).start()
 
+    bind_stream_status(engine)
     try:
         flow()
     finally:
         stop.set()
+        unbind_stream_status(engine)
         logger.info("DeepStream pipeline stopped")

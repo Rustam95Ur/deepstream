@@ -900,7 +900,9 @@ td.uri { word-break: break-all; color: var(--muted); max-width: 320px; }
 }
 .log-row.is-error .log-msg { color: var(--err); }
 .pill-ok { background: var(--ok-bg); color: #0a7a45; }
+.pill-warn { background: #fff8dd; color: #b45309; }
 .pill-err { background: var(--err-bg); color: var(--err); }
+.pill-muted { background: var(--primary-light); color: var(--gray-700); }
 .pill {
   display: inline-block;
   margin-left: 0.4rem;

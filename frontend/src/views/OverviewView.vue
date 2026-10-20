@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import { ApiError, api } from "../api";
 import { enabledCount, flash, store } from "../store";
 import { triggerLabel } from "../schoolAlgorithms";
-import type { Camera, OutboundJob, TriggerEvent, VideoHealth, Webhook } from "../types";
+import type { Camera, CameraStream, OutboundJob, TriggerEvent, VideoHealth, Webhook } from "../types";
 
 const router = useRouter();
 const health = ref<VideoHealth | null>(null);
@@ -57,18 +57,171 @@ function ringOf(cameraId: string) {
   return health.value?.cameras.find((c) => c.camera_id === cameraId);
 }
 
-function ringLabel(cameraId: string) {
-  if (!isRtsp(store.cameras.find((c) => c.id === cameraId)?.main_uri || "")) return "не RTSP";
-  const row = ringOf(cameraId);
-  if (!health.value?.ring_running || !row) return "нет записи";
-  if (!row.alive) return "упал";
-  if (row.stalled) return "застой";
-  return "живой";
+function streamOf(cameraId: string): CameraStream | undefined {
+  return health.value?.streams?.find((row) => row.camera_id === cameraId);
+}
+
+function ageText(sec: number | null | undefined) {
+  if (sec == null || Number.isNaN(sec)) return "";
+  const s = Math.max(0, Math.round(sec));
+  if (s < 60) return `${s} с`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem ? `${m} мин ${rem} с` : `${m} мин`;
+}
+
+function explainGst(raw: string) {
+  const text = raw.trim();
+  if (!text) return "";
+  const t = text.toLowerCase();
+  if (t.includes("end-of-file") || t.includes("end of file")) return "камера закрыла RTSP";
+  if (t.includes("parse error")) return "камера ответила не RTSP";
+  if (t.includes("connection refused")) return "соединение отклонено";
+  if (t.includes("timed out") || t.includes("timeout")) return "таймаут RTSP";
+  if (t.includes("not found") || t.includes("404")) return "поток не найден";
+  if (t.includes("no data")) return "источник не отдаёт кадры";
+  if (t.includes("could not read") || t.includes("could not write") || t.includes("system error")) {
+    return "нет связи с камерой";
+  }
+  return text.length > 180 ? `${text.slice(0, 177)}…` : text;
 }
 
 function pipeReason(cam: Camera) {
   if (pipelineIds.value.has(cam.id)) return "";
   return skipById.value.get(cam.id) || (cam.enabled ? "не в текущем графе" : "выключена");
+}
+
+function detectState(cam: Camera) {
+  if (!health.value) return "down";
+  if (!pipelineIds.value.has(cam.id)) return "out";
+  return streamOf(cam.id)?.state || "unknown";
+}
+
+function detectLabel(cam: Camera) {
+  switch (detectState(cam)) {
+    case "live":
+      return "кадры";
+    case "starting":
+      return "старт";
+    case "waiting":
+      return "ждёт";
+    case "silent":
+      return "молчит";
+    case "closed":
+      return "нет потока";
+    case "down":
+      return "нет связи";
+    case "out":
+      return "нет";
+    default:
+      return "нет данных";
+  }
+}
+
+function detectClass(cam: Camera) {
+  const state = detectState(cam);
+  if (state === "live") return "pill-ok";
+  if (state === "starting" || state === "waiting") return "pill-warn";
+  if (state === "out" && !cam.enabled) return "pill-muted";
+  return "pill-err";
+}
+
+function detectTitle(cam: Camera) {
+  const problem = detectProblem(cam);
+  if (problem) return problem;
+  const age = ageText(streamOf(cam.id)?.last_frame_age_s);
+  return age ? `последний кадр ${age} назад` : "";
+}
+
+function detectProblem(cam: Camera) {
+  const state = detectState(cam);
+  const age = ageText(streamOf(cam.id)?.last_frame_age_s);
+  if (state === "down") return "нет связи с video-контейнером";
+  if (state === "out") return pipeReason(cam);
+  if (state === "starting") {
+    const up = ageText(streamOf(cam.id)?.pipeline_uptime_s);
+    return up
+      ? `пайплайн ещё поднимается, кадров нет уже ${up}`
+      : "пайплайн ещё поднимается, кадров нет";
+  }
+  if (state === "waiting") return "поток ещё открывается";
+  if (state === "closed") return "кадров не было — RTSP не открылся";
+  if (state === "silent") {
+    return age
+      ? `нет кадров ${age} — источник молчит, идёт переподключение`
+      : "источник молчит, идёт переподключение";
+  }
+  if (state === "unknown") return "нет данных о кадрах";
+  return "";
+}
+
+function ringKind(cameraId: string) {
+  if (!health.value) return "down";
+  if (!isRtsp(store.cameras.find((c) => c.id === cameraId)?.main_uri || "")) return "skip";
+  if (!health.value.clip_record) return "off";
+  const row = ringOf(cameraId);
+  if (!health.value.ring_running || !row) return "absent";
+  if (!row.alive) return "dead";
+  if (row.stalled) return "stalled";
+  return "live";
+}
+
+function ringLabel(cameraId: string) {
+  switch (ringKind(cameraId)) {
+    case "live":
+      return "пишет";
+    case "stalled":
+      return "застой";
+    case "dead":
+      return "упал";
+    case "skip":
+      return "не RTSP";
+    case "off":
+      return "выкл";
+    case "down":
+      return "нет связи";
+    default:
+      return "нет записи";
+  }
+}
+
+function ringClass(cameraId: string) {
+  const kind = ringKind(cameraId);
+  if (kind === "live") return "pill-ok";
+  if (kind === "stalled" || kind === "off") return "pill-warn";
+  if (kind === "skip") return "pill-muted";
+  return "pill-err";
+}
+
+function ringProblem(cameraId: string) {
+  const kind = ringKind(cameraId);
+  const row = ringOf(cameraId);
+  const why = explainGst(row?.last_error || "");
+  const age = ageText(row?.last_segment_age_s);
+  if (kind === "dead") {
+    return why ? `запись упала: ${why}` : "запись упала";
+  }
+  if (kind === "stalled") {
+    const stall = age ? `запись встала, сегмент ${age} назад` : "запись встала";
+    return why ? `${stall}: ${why}` : stall;
+  }
+  if (kind === "absent" && isRtsp(store.cameras.find((c) => c.id === cameraId)?.main_uri || "")) {
+    return "запись не запущена";
+  }
+  if (kind === "live" && row && row.restarts > 0) {
+    return `запись идёт, перезапусков ${row.restarts}`;
+  }
+  return "";
+}
+
+function streamProblem(cam: Camera) {
+  if (!cam.enabled) return pipeReason(cam) || "выключена";
+  const parts = [detectProblem(cam), ringProblem(cam.id)].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function streamOk(cam: Camera) {
+  return !streamProblem(cam);
 }
 
 function logTime(iso?: string | null) {
@@ -224,7 +377,7 @@ onUnmounted(() => {
     <section class="card">
       <div class="card-head">
         <h2>Потоки</h2>
-        <p class="lede">Pipeline детекции и ring-buffer клипов — разные контуры.</p>
+        <p class="lede">По каждой камере: идут ли кадры в детекцию и жива ли запись. Обновляется каждые 8 с.</p>
       </div>
       <div class="card-body">
         <div v-if="store.cameras.length" class="table-wrap">
@@ -233,9 +386,9 @@ onUnmounted(() => {
               <tr>
                 <th>Камера</th>
                 <th>URI</th>
-                <th>Pipeline</th>
-                <th>Причина</th>
-                <th>Ring-buffer</th>
+                <th>Детекция</th>
+                <th>Запись</th>
+                <th>Что не так</th>
               </tr>
             </thead>
             <tbody>
@@ -246,25 +399,21 @@ onUnmounted(() => {
                 </td>
                 <td class="uri">{{ cam.main_uri || "—" }}</td>
                 <td>
-                  <span
-                    class="pill"
-                    :class="pipelineIds.has(cam.id) ? 'pill-ok' : 'pill-err'"
-                    :title="pipeReason(cam)"
-                  >
-                    {{ pipelineIds.has(cam.id) ? "в пайпе" : "нет" }}
+                  <span class="pill" :class="detectClass(cam)" :title="detectTitle(cam)">
+                    {{ detectLabel(cam) }}
                   </span>
-                </td>
-                <td class="reason-cell" :class="{ 'is-ok': pipelineIds.has(cam.id) }">
-                  {{ pipeReason(cam) || "—" }}
                 </td>
                 <td>
                   <span
                     class="pill"
-                    :class="ringLabel(cam.id) === 'живой' ? 'pill-ok' : 'pill-err'"
+                    :class="ringClass(cam.id)"
                     :title="ringOf(cam.id)?.last_error || ''"
                   >
                     {{ ringLabel(cam.id) }}
                   </span>
+                </td>
+                <td class="reason-cell" :class="{ 'is-ok': streamOk(cam) }">
+                  {{ streamProblem(cam) || "поток в порядке" }}
                 </td>
               </tr>
             </tbody>

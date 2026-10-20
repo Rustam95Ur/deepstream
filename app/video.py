@@ -15,10 +15,12 @@ from app.db import db_enabled, get_engine, session_scope
 from app.ds.log_buffer import install as install_log_buffer
 from app.ds.log_buffer import snapshot as log_snapshot
 from app.ds.ring_buffer import get_ring_buffer
+from app.ds.stream_status import snapshot as stream_snapshot
 from app.history import get_history_writer
 from app.logging_config import bind_context, configure_logging, log_extra
 from app.schemas import (
     CameraProbeOut,
+    CameraStreamOut,
     LogLineOut,
     RingCameraHealthOut,
     VideoHealthOut,
@@ -156,6 +158,11 @@ def video_health() -> VideoHealthOut:
             seen.add(cam.last_error)
     pipe = get_manager().status()
     pipe.recent_errors = errors
+    streams = [
+        CameraStreamOut.model_validate(row)
+        for row in stream_snapshot()
+        if isinstance(row, dict) and row.get("camera_id")
+    ]
     return VideoHealthOut(
         status="ok",
         gst_available=bool(ring.get("gst_available")),
@@ -163,6 +170,7 @@ def video_health() -> VideoHealthOut:
         ring_running=bool(ring.get("ring_running")),
         pipeline=pipe,
         cameras=cameras,
+        streams=streams,
         recent_errors=errors,
     )
 

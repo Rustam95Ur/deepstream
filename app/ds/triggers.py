@@ -106,9 +106,53 @@ class TriggerEngine:
         # When set (pipeline reload/stop), do not fire — old pads must go quiet.
         self._halt = halt
         self._cams = {c.camera_id: c for c in cameras}
+        self._started_mono = time.monotonic()
+        self._first_frame_mono: float | None = None
         self.by_pad: dict[int, CameraTriggerState] = {}
         for idx, cam in enumerate(cameras):
             self.by_pad[idx] = CameraTriggerState(camera_id=cam.camera_id)
+
+    def _mark_frame(self, st: CameraTriggerState, now: float) -> None:
+        st.last_frame_ts = now
+        st.saw_frame = True
+        if self._first_frame_mono is None:
+            self._first_frame_mono = now
+        if st.warmup_from is None:
+            st.warmup_from = now
+
+    def stream_rows(self) -> list[dict[str, Any]]:
+        """Per-camera decode health for the admin. Safe to call off the probe thread."""
+        now = time.monotonic()
+        silent = float(self.app_cfg.pipeline.stream_silent_s or 30.0)
+        any_frame = self._first_frame_mono is not None
+        since_first = (now - self._first_frame_mono) if any_frame else 0.0
+        rows: list[dict[str, Any]] = []
+        for pad, st in self.by_pad.items():
+            cam = self._cams.get(st.camera_id)
+            age: float | None
+            if not st.saw_frame:
+                age = None
+                if not any_frame:
+                    state = "starting"
+                elif since_first < silent:
+                    state = "waiting"
+                else:
+                    state = "closed"
+            else:
+                age = max(0.0, now - st.last_frame_ts)
+                state = "silent" if age >= silent else "live"
+            rows.append(
+                {
+                    "camera_id": st.camera_id,
+                    "name": ((cam.name if cam else "") or st.camera_id),
+                    "pad": pad,
+                    "state": state,
+                    "last_frame_age_s": round(age, 1) if age is not None else None,
+                    "silent_after_s": silent,
+                    "pipeline_uptime_s": round(max(0.0, now - self._started_mono), 1),
+                }
+            )
+        return rows
 
     def _halted(self) -> bool:
         halt = self._halt
@@ -177,10 +221,7 @@ class TriggerEngine:
         st = self.by_pad.get(pad_index)
         if st:
             now = time.monotonic()
-            st.last_frame_ts = now
-            st.saw_frame = True
-            if st.warmup_from is None:
-                st.warmup_from = now
+            self._mark_frame(st, now)
             if video_s is not None and video_s >= 0:
                 st.last_video_s = float(video_s)
 
@@ -224,10 +265,7 @@ class TriggerEngine:
         if not st:
             return
         now = time.monotonic()
-        st.last_frame_ts = now
-        st.saw_frame = True
-        if st.warmup_from is None:
-            st.warmup_from = now
+        self._mark_frame(st, now)
         raw = [d for d in detections if d.h > 0 and d.w > 0]
         warming = (now - st.warmup_from) < WARMUP_S
         people = self._live_people(st, raw, now, force_static=warming)

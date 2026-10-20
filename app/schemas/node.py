@@ -65,6 +65,19 @@ class WorkerStatusOut(BaseModel):
     recent_errors: list[LogLineOut] = Field(default_factory=list)
 
 
+class CameraStreamOut(BaseModel):
+    """Decode health of one camera inside the live DeepStream graph."""
+
+    camera_id: str
+    name: str = ""
+    pad: int = 0
+    # live | silent | closed | waiting | starting
+    state: str = ""
+    last_frame_age_s: float | None = None
+    silent_after_s: float = 30.0
+    pipeline_uptime_s: float = 0.0
+
+
 class RingCameraHealthOut(BaseModel):
     camera_id: str
     name: str
@@ -83,4 +96,5 @@ class VideoHealthOut(BaseModel):
     ring_running: bool = False
     pipeline: WorkerStatusOut
     cameras: list[RingCameraHealthOut] = Field(default_factory=list)
+    streams: list[CameraStreamOut] = Field(default_factory=list)
     recent_errors: list[LogLineOut] = Field(default_factory=list)

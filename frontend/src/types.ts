@@ -245,6 +245,16 @@ export interface OutboundJob {
   updated_at: string;
 }
 
+export interface CameraStream {
+  camera_id: string;
+  name: string;
+  pad: number;
+  state: string;
+  last_frame_age_s: number | null;
+  silent_after_s: number;
+  pipeline_uptime_s?: number;
+}
+
 export interface RingCameraHealth {
   camera_id: string;
   name: string;
@@ -263,6 +273,7 @@ export interface VideoHealth {
   ring_running: boolean;
   pipeline: WorkerStatus;
   cameras: RingCameraHealth[];
+  streams?: CameraStream[];
   recent_errors?: LogLine[];
 }
 
