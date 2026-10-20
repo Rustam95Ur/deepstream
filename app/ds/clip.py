@@ -27,6 +27,9 @@ from app.ds.ring_buffer import (
 logger = logging.getLogger(__name__)
 
 _LOCK_TTL_SEC = 60 * 30
+# Fit inside this frame. Aspect stays; nothing is cropped or stretched.
+_MAX_WIDTH = 854
+_MAX_HEIGHT = 480
 _event_locks: dict[str, float] = {}
 _event_locks_mu = threading.Lock()
 
@@ -41,6 +44,89 @@ def _ffmpeg_bin() -> str:
 def ffmpeg_available() -> bool:
     path = _ffmpeg_bin()
     return Path(path).is_file() or bool(shutil.which(path))
+
+
+def _even(value: float) -> int:
+    size = int(round(value / 2.0)) * 2
+    return max(2, size)
+
+
+def clip_output_size(width: int, height: int) -> tuple[int, int]:
+    """Largest even frame that fits in 854×480 and keeps the source aspect."""
+    if width <= 0 or height <= 0:
+        return _MAX_WIDTH, _MAX_HEIGHT
+    scale = min(_MAX_WIDTH / width, _MAX_HEIGHT / height, 1.0)
+    return _even(width * scale), _even(height * scale)
+
+
+def _ffprobe_bin() -> str:
+    sibling = Path(_ffmpeg_bin()).with_name("ffprobe")
+    for candidate in (str(sibling), "/usr/local/bin/ffprobe", shutil.which("ffprobe") or ""):
+        if candidate and (Path(candidate).is_file() or shutil.which(candidate)):
+            return candidate
+    return "ffprobe"
+
+
+def probe_video_size(source: str | Path, *, timeout: float = 12.0) -> tuple[int, int] | None:
+    uri = str(source or "").strip()
+    if not uri:
+        return None
+    cmd = [_ffprobe_bin(), "-v", "error"]
+    if uri.lower().startswith("rtsp://"):
+        cmd += ["-rtsp_transport", "tcp"]
+    cmd += [
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=p=0:s=x",
+        uri,
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except Exception:
+        logger.warning("ffprobe failed source=%s", uri[:80], exc_info=True)
+        return None
+    if res.returncode != 0:
+        return None
+    line = ((res.stdout or "").strip().splitlines() or [""])[0].strip()
+    if "x" not in line:
+        return None
+    raw_w, raw_h = line.split("x", 1)
+    try:
+        width, height = int(raw_w), int(raw_h.split(",")[0])
+    except ValueError:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return width, height
+
+
+def _encode_scaled(width: int, height: int) -> list[str]:
+    if width > 0 and height > 0:
+        out_w, out_h = clip_output_size(width, height)
+        scale = f"scale={out_w}:{out_h}"
+        logger.info("clip encode %sx%s -> %sx%s", width, height, out_w, out_h)
+    else:
+        scale = (
+            f"scale={_MAX_WIDTH}:{_MAX_HEIGHT}"
+            ":force_original_aspect_ratio=decrease:force_divisible_by=2"
+        )
+        logger.info("clip encode size unknown, fit inside %sx%s", _MAX_WIDTH, _MAX_HEIGHT)
+    return [
+        "-vf",
+        scale,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "28",
+        "-pix_fmt",
+        "yuv420p",
+        "-an",
+    ]
 
 
 def _acquire_event_lock(event_id: str) -> bool:
@@ -115,6 +201,8 @@ def concat_segments(segs: list[tuple[Path, float]], out_path: Path) -> bool:
         with open(list_path, "w", encoding="utf-8") as f:
             for seg_path, _mtime in segs:
                 f.write(f"file '{seg_path.resolve().as_posix()}'\n")
+        size = probe_video_size(segs[0][0]) if segs else None
+        width, height = size if size else (0, 0)
         cmd = [
             _ffmpeg_bin(),
             "-y",
@@ -124,8 +212,7 @@ def concat_segments(segs: list[tuple[Path, float]], out_path: Path) -> bool:
             "0",
             "-i",
             str(list_path),
-            "-c",
-            "copy",
+            *_encode_scaled(width, height),
             str(out_path),
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
@@ -157,6 +244,8 @@ def cut_clip_from_source_video(
     start = max(0.0, float(offset_s) - float(pre_s))
     duration = max(0.1, float(pre_s) + float(post_s))
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    size = probe_video_size(source_video)
+    width, height = size if size else (0, 0)
     cmd = [
         _ffmpeg_bin(),
         "-y",
@@ -166,8 +255,7 @@ def cut_clip_from_source_video(
         str(source_video),
         "-t",
         f"{duration:.3f}",
-        "-c",
-        "copy",
+        *_encode_scaled(width, height),
         "-avoid_negative_ts",
         "make_zero",
         str(out_path),
@@ -438,14 +526,12 @@ def _record_live_clip(source: str, out_path: Path, duration_s: float) -> bool:
     duration = max(1.0, float(duration_s))
     timeout = duration + 25.0
     is_rtsp = uri.lower().startswith("rtsp://")
-    attempts: list[list[str]] = []
-    if is_rtsp:
-        attempts.append(_live_cmd(uri, out_path, duration, copy=True, rtsp=True))
-        attempts.append(_live_cmd(uri, out_path, duration, copy=False, rtsp=True))
-    else:
-        attempts.append(_live_cmd(uri, out_path, duration, copy=True, rtsp=False, tail=True))
-        attempts.append(_live_cmd(uri, out_path, duration, copy=True, rtsp=False, tail=False))
-        attempts.append(_live_cmd(uri, out_path, duration, copy=False, rtsp=False, tail=False))
+    size = probe_video_size(uri)
+    width, height = size if size else (0, 0)
+    attempts = [
+        _live_cmd(uri, out_path, duration, rtsp=is_rtsp, tail=not is_rtsp, width=width, height=height),
+        _live_cmd(uri, out_path, duration, rtsp=is_rtsp, tail=False, width=width, height=height),
+    ]
     for cmd in attempts:
         if _ffmpeg_ok(cmd, timeout) and out_path.is_file() and out_path.stat().st_size > 0:
             return True
@@ -457,9 +543,10 @@ def _live_cmd(
     out_path: Path,
     duration: float,
     *,
-    copy: bool,
     rtsp: bool,
     tail: bool = False,
+    width: int = 0,
+    height: int = 0,
 ) -> list[str]:
     cmd = [_ffmpeg_bin(), "-y"]
     if rtsp:
@@ -469,11 +556,7 @@ def _live_cmd(
     cmd += ["-i", uri]
     if not tail:
         cmd += ["-t", f"{duration:.3f}"]
-    cmd.append("-an")
-    if copy:
-        cmd += ["-c", "copy"]
-    else:
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
+    cmd += _encode_scaled(width, height)
     cmd.append(str(out_path))
     return cmd
 
