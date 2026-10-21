@@ -52,6 +52,72 @@ def _require(hook: Webhook | None, webhook_id: str) -> Webhook:
     return hook
 
 
+def _proxy_label(hook: Webhook) -> str:
+    if not hook.proxy_enabled or not hook.proxy_host:
+        return ""
+    if hook.proxy_port:
+        return f"{hook.proxy_host}:{hook.proxy_port}"
+    return hook.proxy_host
+
+
+def _proxy_values(
+    args: argparse.Namespace, hook: Webhook | None
+) -> tuple[bool, str, int, str, str | None]:
+    """Return enabled, host, port, login, password. Password None keeps the saved one."""
+    raw_host = getattr(args, "proxy", None)
+    raw_port = getattr(args, "proxy_port", None)
+    raw_login = getattr(args, "proxy_login", None)
+    raw_password = getattr(args, "proxy_password", None)
+    disable = bool(getattr(args, "no_proxy", False))
+    touched = any(
+        value is not None for value in (raw_host, raw_port, raw_login, raw_password)
+    )
+    if disable and raw_host is not None:
+        raise CliError("--no-proxy нельзя совмещать с --proxy")
+    if hook is None and not touched:
+        return False, "", 0, "", None
+    if hook is not None and not touched and not disable:
+        return (
+            hook.proxy_enabled,
+            hook.proxy_host,
+            hook.proxy_port,
+            hook.proxy_login,
+            None,
+        )
+    if disable:
+        return (
+            False,
+            hook.proxy_host if hook else "",
+            hook.proxy_port if hook else 0,
+            hook.proxy_login if hook else "",
+            None,
+        )
+
+    host = raw_host if raw_host is not None else (hook.proxy_host if hook else "")
+    if raw_port is not None:
+        port = raw_port
+    elif raw_host is not None:
+        port = 0
+    else:
+        port = hook.proxy_port if hook else 0
+    login = raw_login if raw_login is not None else (hook.proxy_login if hook else "")
+    password = raw_password
+    if login and not password:
+        same_saved = bool(
+            hook and hook.proxy_auth_configured and login == hook.proxy_login
+        )
+        if not same_saved:
+            password = read_secret(None, "Пароль прокси")
+    enabled = (
+        True
+        if raw_host is not None or raw_port is not None
+        else bool(hook and hook.proxy_enabled)
+    )
+    if hook is None:
+        enabled = True
+    return enabled, host, port, login, password
+
+
 def _save(
     hook: Webhook,
     *,
@@ -62,8 +128,19 @@ def _save(
     password: str | None = None,
     timeout_sec: float | None = None,
     max_retries: int | None = None,
+    proxy: tuple[bool, str, int, str, str | None] | None = None,
 ) -> Webhook:
     next_login = hook.login if login is None else login
+    if proxy is None:
+        proxy_enabled, proxy_host, proxy_port, proxy_login, proxy_password = (
+            hook.proxy_enabled,
+            hook.proxy_host,
+            hook.proxy_port,
+            hook.proxy_login,
+            None,
+        )
+    else:
+        proxy_enabled, proxy_host, proxy_port, proxy_login, proxy_password = proxy
     body = WebhookIn(
         name=hook.name if name is None else name,
         url=hook.url if url is None else url,
@@ -72,11 +149,11 @@ def _save(
         password=password,
         timeout_sec=hook.timeout_sec if timeout_sec is None else timeout_sec,
         max_retries=hook.max_retries if max_retries is None else max_retries,
-        proxy_enabled=hook.proxy_enabled,
-        proxy_host=hook.proxy_host,
-        proxy_port=hook.proxy_port,
-        proxy_login=hook.proxy_login,
-        proxy_password=None,
+        proxy_enabled=proxy_enabled,
+        proxy_host=proxy_host,
+        proxy_port=proxy_port,
+        proxy_login=proxy_login,
+        proxy_password=proxy_password,
     )
     if next_login and not hook.auth_configured and not body.password:
         raise CliError("Для нового логина нужен --password (минимум 8 символов)")
@@ -99,7 +176,11 @@ def _save(
 
 
 def cmd_list(ctx: Ctx, _args: argparse.Namespace) -> None:
-    rows = [webhook_dict(hook) for hook in list_webhooks()]
+    rows = []
+    for hook in list_webhooks():
+        row = webhook_dict(hook)
+        row["proxy"] = _proxy_label(hook)
+        rows.append(row)
     emit_table(
         ctx,
         rows,
@@ -109,8 +190,7 @@ def cmd_list(ctx: Ctx, _args: argparse.Namespace) -> None:
             ("enabled", "вкл"),
             ("url", "url"),
             ("login", "логин"),
-            ("auth_configured", "пароль"),
-            ("proxy_enabled", "прокси"),
+            ("proxy", "прокси"),
         ],
         empty="Webhook нет",
     )
@@ -122,6 +202,9 @@ def cmd_get(ctx: Ctx, args: argparse.Namespace) -> None:
 
 def cmd_add(ctx: Ctx, args: argparse.Namespace) -> None:
     password = read_secret(args.password, "Пароль webhook")
+    proxy_enabled, proxy_host, proxy_port, proxy_login, proxy_password = _proxy_values(
+        args, None
+    )
     body = WebhookIn(
         name=args.name or "",
         url=args.url,
@@ -130,6 +213,11 @@ def cmd_add(ctx: Ctx, args: argparse.Namespace) -> None:
         password=password,
         timeout_sec=args.timeout,
         max_retries=args.retries,
+        proxy_enabled=proxy_enabled,
+        proxy_host=proxy_host,
+        proxy_port=proxy_port,
+        proxy_login=proxy_login,
+        proxy_password=proxy_password,
     )
     if not body.login:
         raise CliError("Укажите --login. Им Campus запрашивает список камер")
@@ -143,6 +231,11 @@ def cmd_add(ctx: Ctx, args: argparse.Namespace) -> None:
         password=body.password,
         timeout_sec=body.timeout_sec,
         max_retries=body.max_retries,
+        proxy_enabled=body.proxy_enabled,
+        proxy_host=body.proxy_host,
+        proxy_port=body.proxy_port,
+        proxy_login=body.proxy_login,
+        proxy_password=body.proxy_password or "",
     )
     emit_result(ctx, "создан", webhook_dict(hook))
 
@@ -154,17 +247,24 @@ def cmd_update(ctx: Ctx, args: argparse.Namespace) -> None:
         enabled = True
     elif args.disabled:
         enabled = False
-    changed = any(
-        value is not None
-        for value in (
-            args.name,
-            args.url,
-            args.login,
-            args.password,
-            args.timeout,
-            args.retries,
-            enabled,
+    proxy_touched = any(
+        getattr(args, name, None) is not None
+        for name in ("proxy", "proxy_port", "proxy_login", "proxy_password")
+    ) or bool(args.no_proxy)
+    changed = (
+        any(
+            value is not None
+            for value in (
+                args.name,
+                args.url,
+                args.login,
+                args.password,
+                args.timeout,
+                args.retries,
+                enabled,
+            )
         )
+        or proxy_touched
     )
     if not changed:
         raise CliError("Нечего менять: укажите хотя бы один флаг")
@@ -177,6 +277,7 @@ def cmd_update(ctx: Ctx, args: argparse.Namespace) -> None:
         password=args.password,
         timeout_sec=args.timeout,
         max_retries=args.retries,
+        proxy=_proxy_values(args, hook),
     )
     emit_result(ctx, "обновлён", webhook_dict(saved))
 
@@ -196,6 +297,36 @@ def cmd_delete(ctx: Ctx, args: argparse.Namespace) -> None:
     if not delete_webhook(args.id):
         raise HTTPException(status_code=404, detail=f"Webhook {args.id} не найден")
     emit_result(ctx, "удалён", {"id": args.id})
+
+
+def _proxy_flags(parser: argparse.ArgumentParser, *, disable: bool = False) -> None:
+    parser.add_argument(
+        "--proxy",
+        default=None,
+        help="Хост прокси: 10.0.0.8:3128 или http://10.0.0.8:3128",
+    )
+    parser.add_argument(
+        "--proxy-port",
+        type=int,
+        default=None,
+        help="Порт, если его нет в --proxy",
+    )
+    parser.add_argument(
+        "--proxy-login",
+        default=None,
+        help="Логин прокси. Пусто, если прокси без входа",
+    )
+    parser.add_argument(
+        "--proxy-password",
+        default=None,
+        help="Пароль прокси. Если логин задан, а пароля нет, команда спросит",
+    )
+    if disable:
+        parser.add_argument(
+            "--no-proxy",
+            action="store_true",
+            help="Больше не отправлять этот webhook через прокси",
+        )
 
 
 def register(sub: argparse._SubParsersAction) -> None:
@@ -223,6 +354,7 @@ def register(sub: argparse._SubParsersAction) -> None:
         "--retries", type=int, default=5, help="Сколько повторов после ошибки"
     )
     add.add_argument("--disabled", action="store_true", help="Создать выключенным")
+    _proxy_flags(add)
     add.set_defaults(func=cmd_add)
 
     update = commands.add_parser("update", help="Изменить webhook")
@@ -238,6 +370,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     state = update.add_mutually_exclusive_group()
     state.add_argument("--enabled", action="store_true")
     state.add_argument("--disabled", action="store_true")
+    _proxy_flags(update, disable=True)
     update.set_defaults(func=cmd_update)
 
     enable = commands.add_parser("enable", help="Включить webhook")

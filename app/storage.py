@@ -69,7 +69,19 @@ class Store:
             return s
         raw = json.loads(self.settings_path.read_text(encoding="utf-8"))
         self._settings_mtime = self._file_mtime()
-        return NodeSettings.model_validate(raw or {})
+        settings = NodeSettings.model_validate(raw or {})
+        stored = ""
+        if isinstance(raw, dict):
+            stored = str(raw.get("detector_model") or "").strip().lower()
+        if stored and stored != settings.detector_model:
+            logger.warning(
+                "detector_model=%s is not used, settings saved as %s",
+                stored,
+                settings.detector_model,
+            )
+            self._write_json(self.settings_path, settings.model_dump())
+            self._settings_mtime = self._file_mtime()
+        return settings
 
     @staticmethod
     def _write_json(path: Path, data: Any) -> None:

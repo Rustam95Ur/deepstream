@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from app.ds.config import CameraConfig
 from app.ds.rtsp import sanitize_rtsp_url
 from app.runtime_env import get_runtime_env
+from app.settings import normalize_detector_model
+
+logger = logging.getLogger(__name__)
 
 
 def write_pgie_config(
@@ -22,10 +26,11 @@ def write_pgie_config(
     Classes: 0 person, 1 bag, 2 face -> ``person_class_id`` stays 0.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
-    model = (detector_model or "peoplenet").strip().lower()
-    if model != "peoplenet":
-        raise ValueError(
-            f"Unsupported detector_model={model!r}; only peoplenet is wired"
+    requested = (detector_model or "").strip().lower()
+    model = normalize_detector_model(detector_model)
+    if requested and requested != model:
+        logger.warning(
+            "detector_model=%s is not wired, using %s", requested, model
         )
 
     model_dir = (get_runtime_env().model_dir / "peoplenet").resolve()

@@ -13,6 +13,12 @@ from app.trigger_types import DEFAULT_ENABLED_TRIGGERS, normalize_enabled_trigge
 DEFAULT_BILLING_VALIDATE_URL = "http://localhost/api/v1/public/keys/validate"
 
 
+def normalize_detector_model(value: object) -> str:
+    """PeopleNet is the only wired detector. Older installs stored ``yolo11n``."""
+    raw = str(value or "").strip().lower()
+    return raw if raw == "peoplenet" else "peoplenet"
+
+
 def _default_data_dir() -> Path:
     return get_runtime_env().data_dir
 
@@ -80,6 +86,11 @@ class NodeSettings(BaseModel):
     mux_height: int = 720
     person_class_id: int = 0
     detector_model: str = "peoplenet"
+
+    @field_validator("detector_model", mode="before")
+    @classmethod
+    def _detector_model(cls, value: object) -> str:
+        return normalize_detector_model(value)
 
     # Worker
     auto_start_pipeline: bool = True

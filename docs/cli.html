@@ -390,11 +390,14 @@ python -m app.cli settings set billing_api_key=XXXX --reveal</code></pre>
         <p>
           Сюда нода шлёт инциденты. Логин и пароль — это ещё и Basic-доступ, которым Campus
           читает и пишет камеры по HTTP. Пароль в списке не показывается, только факт, что он задан.
+          <code>--proxy</code> направляет исходящие запросы этого webhook через прокси.
         </p>
         <div class="cmd"><button class="copy" type="button">Копировать</button>
           <pre><code>python -m app.cli webhooks list
 python -m app.cli webhooks add --name campus --url https://campus.example/api/v1/incidents/ --login node1 --password 'secret-pass'
-python -m app.cli webhooks update WEBHOOK_ID --url https://campus.example/api/v1/incidents/ --retries 8
+python -m app.cli webhooks add --name campus --url https://campus.example/api/v1/incidents/ --login node1 --password 'secret-pass' --proxy 10.0.0.8:3128 --proxy-login proxy --proxy-password 'proxy-secret'
+python -m app.cli webhooks update WEBHOOK_ID --proxy http://10.0.0.8:3128
+python -m app.cli webhooks update WEBHOOK_ID --no-proxy
 python -m app.cli webhooks disable WEBHOOK_ID
 python -m app.cli webhooks enable WEBHOOK_ID
 python -m app.cli webhooks delete WEBHOOK_ID --yes</code></pre>
@@ -409,6 +412,11 @@ python -m app.cli webhooks delete WEBHOOK_ID --yes</code></pre>
             <tr><td><code>--timeout</code></td><td>Секунды ожидания ответа, от 1 до 120. По умолчанию 5.</td></tr>
             <tr><td><code>--retries</code></td><td>Повторы после ошибки, от 0 до 20. По умолчанию 5.</td></tr>
             <tr><td><code>--disabled</code></td><td>Создать выключенным.</td></tr>
+            <tr><td><code>--proxy</code></td><td>Куда слать исходящие запросы. <code>10.0.0.8:3128</code> или <code>http://10.0.0.8:3128</code>. Без этого флага прокси выключен.</td></tr>
+            <tr><td><code>--proxy-port</code></td><td>Порт, если в <code>--proxy</code> указан только хост.</td></tr>
+            <tr><td><code>--proxy-login</code></td><td>Логин прокси. Не нужен, если прокси без входа. Двоеточие в логине нельзя.</td></tr>
+            <tr><td><code>--proxy-password</code></td><td>Пароль прокси. Если задан логин, а пароля нет, команда спросит. При изменении пустой пароль оставляет прежний.</td></tr>
+            <tr><td><code>--no-proxy</code></td><td>Только <code>update</code>: отправлять напрямую, без прокси.</td></tr>
           </tbody>
         </table>
       </section>

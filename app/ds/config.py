@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.settings import normalize_detector_model
 from app.trigger_types import (
     DEFAULT_ENABLED_TRIGGERS,
     camera_trigger_override,
@@ -132,10 +133,7 @@ def app_config_from_dict(raw: dict[str, Any]) -> AppConfig:
         clip_pre_s=float(rec_raw.get("clip_pre_s") or 5.0),
         clip_post_s=float(rec_raw.get("clip_post_s") or 15.0),
     )
-    detector = (
-        str(pipe_raw.get("detector_model") or "peoplenet").strip().lower()
-        or "peoplenet"
-    )
+    detector = normalize_detector_model(pipe_raw.get("detector_model"))
     pipeline = PipelineConfig(
         infer_interval=int(
             pipe_raw["infer_interval"]
