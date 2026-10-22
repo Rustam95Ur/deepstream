@@ -99,6 +99,81 @@ def cmd_get(ctx: Ctx, args: argparse.Namespace) -> None:
     emit_result(ctx, args.id, camera_dict(get_camera(args.id)))
 
 
+def _health_for_problems():
+    from app.pipeline_status import attach_status
+    from app.storage import get_store
+    from app.video_client import video_health
+
+    store = get_store()
+    health = video_health()
+    health.pipeline = attach_status(
+        health.pipeline, store.list_cameras(), store.get_settings()
+    )
+    return health
+
+
+def cmd_errors(ctx: Ctx, args: argparse.Namespace) -> None:
+    import sys
+
+    from app.cli.console import emit_json
+    from app.services.camera_problems import describe_camera, is_fault
+    from app.storage import get_store
+
+    health = _health_for_problems()
+    view = health if health.status == "ok" else None
+    if args.id:
+        cameras = [get_camera(args.id)]
+    else:
+        cameras = [cam for cam in get_store().list_cameras() if cam.enabled]
+    rows = [describe_camera(cam, view) for cam in cameras]
+    faults = [row for row in rows if is_fault(row["problem"])]
+    shown = faults if not args.id else rows
+    payload = {
+        "ok": not faults,
+        "errors": len(faults),
+        "cameras": len(rows),
+        "items": shown,
+    }
+    if not view and not ctx.as_json:
+        detail = (health.pipeline.detail or health.pipeline.last_error or "").strip()
+        if detail:
+            print(detail, file=sys.stderr)
+    if ctx.as_json:
+        emit_json(payload)
+    elif not shown:
+        print("ошибок нет" if cameras else "Камер нет")
+    elif args.id:
+        row = shown[0]
+        emit_result(
+            ctx,
+            row["problem"] or "поток в порядке",
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "uri": row["uri"],
+                "detect": row["detect"],
+                "record": row["record"],
+                "last_error": row["last_error"],
+            },
+        )
+    else:
+        emit_table(
+            ctx,
+            shown,
+            [
+                ("id", "id"),
+                ("name", "имя"),
+                ("detect", "детекция"),
+                ("record", "запись"),
+                ("problem", "что не так"),
+            ],
+            clip=160,
+        )
+        print(f"ошибки: {len(faults)} из {len(rows)}")
+    if faults:
+        raise SystemExit(1)
+
+
 def cmd_add(ctx: Ctx, args: argparse.Namespace) -> None:
     from app.cli.console import CliError
     from app.storage import get_store
@@ -277,7 +352,8 @@ def _triggers(parser: argparse.ArgumentParser, *, inherit: bool) -> None:
 
 def register(sub: argparse._SubParsersAction) -> None:
     parser = sub.add_parser(
-        "cameras", help="Камеры: список, создание, правка, отправка в вебхук, удаление"
+        "cameras",
+        help="Камеры: список, ошибки потока, создание, правка, отправка в вебхук, удаление",
     )
     commands = parser.add_subparsers(dest="action", required=True)
 
@@ -296,6 +372,18 @@ def register(sub: argparse._SubParsersAction) -> None:
     one = commands.add_parser("get", help="Одна камера")
     one.add_argument("id", help="id камеры")
     one.set_defaults(func=cmd_get)
+
+    errors = commands.add_parser(
+        "errors",
+        help="Ошибки потока и записи: все включённые камеры или одна",
+    )
+    errors.add_argument(
+        "id",
+        nargs="?",
+        default="",
+        help="id одной камеры. Без id — все включённые, у которых есть ошибка",
+    )
+    errors.set_defaults(func=cmd_errors)
 
     add = commands.add_parser("add", help="Создать камеру")
     add.add_argument("--uri", required=True, help="rtsp:// или file://")

@@ -123,6 +123,7 @@ def emit_table(
     *,
     empty: str = "пусто",
     extra: dict[str, Any] | None = None,
+    clip: int = 72,
 ) -> None:
     if ctx.as_json:
         payload: dict[str, Any] = {"items": rows}
@@ -134,7 +135,9 @@ def emit_table(
         print(empty)
     else:
         headers = [title for _key, title in columns]
-        body = [[shorten(row.get(key, "")) for key, _title in columns] for row in rows]
+        body = [
+            [shorten(row.get(key, ""), clip) for key, _title in columns] for row in rows
+        ]
         widths = [len(header) for header in headers]
         for line in body:
             for index, item in enumerate(line):

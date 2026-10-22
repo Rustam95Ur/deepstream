@@ -197,6 +197,7 @@
       <a href="#flags">Общие флаги</a>
       <div class="group">Данные</div>
       <a href="#cameras">Камеры</a>
+      <a href="#errors">Ошибки камер</a>
       <a href="#send">Отправить в вебхук</a>
       <a href="#settings">Настройки</a>
       <a href="#webhooks">Webhook</a>
@@ -315,6 +316,33 @@ python -m app.cli cameras delete cam_gate --yes</code></pre>
           <pre><code>python -m app.cli cameras test --uri rtsp://127.0.0.1:8554/cam1 --count 2</code></pre>
         </div>
         <p>Создаёт <code>test_1</code>, <code>test_2</code>, … на один и тот же адрес, в пределах <code>max_streams</code>. <code>--count</code> от 1 до 128.</p>
+      </section>
+
+      <section id="errors">
+        <h2>Ошибки камер</h2>
+        <p>
+          Та же колонка «Что не так», что на обзоре: открылся ли поток, идёт ли запись,
+          почему упала. Без id команда проходит по всем включённым камерам и печатает
+          только те, где есть ошибка. С id — одна камера, даже если с ней всё в порядке.
+          Выключенные в общий список не попадают. Если ошибки есть, код выхода <code>1</code>.
+        </p>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli cameras errors
+python -m app.cli cameras errors cam_gate</code></pre>
+        </div>
+        <table>
+          <thead><tr><th>Колонка</th><th>Зачем</th></tr></thead>
+          <tbody>
+            <tr><td><code>детекция</code></td><td>Кадры в пайплайне: кадры, ждёт, молчит, нет потока, нет связи.</td></tr>
+            <tr><td><code>запись</code></td><td>Ring-buffer: пишет, застой, упал, нет записи.</td></tr>
+            <tr><td><code>что не так</code></td><td>Например <code>поток ещё открывается</code> или <code>запись упала: камера закрыла RTSP</code>.</td></tr>
+          </tbody>
+        </table>
+        <p>
+          Если video-контейнер недоступен, причина печатается в stderr, а у каждой камеры
+          будет «нет связи с video-контейнером». <code>--json</code> отдаёт
+          <code>ok</code>, <code>errors</code> и <code>items</code>.
+        </p>
       </section>
 
       <section id="send">
