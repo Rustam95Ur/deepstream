@@ -7,11 +7,17 @@ import secrets
 
 from fastapi import Request, Response
 
+from app.sso_user import user_from_token
 from app.users import UserRecord, get_user
 
 COOKIE_NAME = "nds_ui"
+SSO_PREFIX = "sso."
+OTP_SETUP_PREFIX = "sso-otp.1."
+OTP_CODE_PREFIX = "sso-otp.0."
 _HMAC_KEY = b"nexus-deepstream-ui-v2"
 _MAX_AGE = 60 * 60 * 24 * 7
+_SSO_MAX_AGE = 60 * 60 * 12
+_OTP_MAX_AGE = 60 * 5
 
 
 def _digest(user_id: str, password_hash: str) -> str:
@@ -28,8 +34,23 @@ def secrets_match(a: str, b: str) -> bool:
     return secrets.compare_digest(a, b)
 
 
+def read_sso_otp(request: Request) -> tuple[str, bool] | None:
+    cookie = request.cookies.get(COOKIE_NAME) or ""
+    if cookie.startswith(OTP_SETUP_PREFIX):
+        token = cookie[len(OTP_SETUP_PREFIX) :]
+        return (token, True) if token else None
+    if cookie.startswith(OTP_CODE_PREFIX):
+        token = cookie[len(OTP_CODE_PREFIX) :]
+        return (token, False) if token else None
+    return None
+
+
 def get_session_user(request: Request) -> UserRecord | None:
     cookie = request.cookies.get(COOKIE_NAME) or ""
+    if cookie.startswith(OTP_SETUP_PREFIX) or cookie.startswith(OTP_CODE_PREFIX):
+        return None
+    if cookie.startswith(SSO_PREFIX):
+        return user_from_token(cookie[len(SSO_PREFIX) :])
     user_id, sep, digest = cookie.partition(".")
     if not sep or not user_id or not digest:
         return None
@@ -50,6 +71,29 @@ def set_session_cookie(response: Response, user: UserRecord) -> None:
         COOKIE_NAME,
         f"{user.id}.{_digest(user.id, user.password_hash)}",
         max_age=_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+
+
+def set_sso_otp_cookie(response: Response, token: str, *, setup: bool) -> None:
+    prefix = OTP_SETUP_PREFIX if setup else OTP_CODE_PREFIX
+    response.set_cookie(
+        COOKIE_NAME,
+        f"{prefix}{token}",
+        max_age=_OTP_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+
+
+def set_sso_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        COOKIE_NAME,
+        f"{SSO_PREFIX}{token}",
+        max_age=_SSO_MAX_AGE,
         httponly=True,
         samesite="lax",
         path="/",

@@ -84,3 +84,5 @@ class SessionOut(BaseModel):
     node_name: str
     license_valid: bool = False
     license_reason: str = ""
+    otp_pending: bool = False
+    otp_setup: bool = False

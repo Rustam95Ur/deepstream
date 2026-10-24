@@ -15,6 +15,7 @@ from app.api.auth import router as auth_router
 from app.api.cameras import router as cameras_router
 from app.api.errors import register_error_handlers
 from app.api.history import router as history_router
+from app.api.organizations import router as organizations_router
 from app.api.scenario_lab import router as scenario_lab_router
 from app.api.public_clips import router as public_clips_router
 from app.api.node import router as node_router
@@ -50,6 +51,12 @@ def _billing_watch() -> None:
             )
         except Exception:
             logger.exception("billing recheck failed")
+        try:
+            from app.services.organization_sync import sync_organizations
+
+            sync_organizations()
+        except Exception:
+            logger.exception("organization sync failed")
 
 
 @asynccontextmanager
@@ -69,6 +76,12 @@ async def lifespan(_app: FastAPI):
         ),
     )
     check = apply_runtime_lock(validate_billing_key(settings))
+    try:
+        from app.services.organization_sync import sync_organizations
+
+        sync_organizations()
+    except Exception:
+        logger.exception("organization sync failed on startup")
     logger.info(
         "billing check",
         extra=log_extra(
@@ -120,6 +133,7 @@ app.include_router(node_router)
 app.include_router(cameras_router)
 app.include_router(webhooks_router)
 app.include_router(users_router)
+app.include_router(organizations_router)
 app.include_router(history_router)
 app.include_router(scenario_lab_router)
 app.include_router(web_router)

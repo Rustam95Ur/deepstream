@@ -1,3 +1,23 @@
+export interface Organization {
+  id: string;
+  name: string;
+  description: string;
+  is_active: boolean;
+  updated_at: string;
+}
+
+export interface OrganizationList {
+  organizations: Organization[];
+  total: number;
+}
+
+export interface OrganizationSync {
+  ok: boolean;
+  synced: number;
+  deactivated: number;
+  detail: string;
+}
+
 export interface Session {
   authenticated: boolean;
   setup: boolean;
@@ -8,6 +28,8 @@ export interface Session {
   node_name: string;
   license_valid: boolean;
   license_reason: string;
+  otp_pending: boolean;
+  otp_setup: boolean;
 }
 
 export interface NodeSettings {

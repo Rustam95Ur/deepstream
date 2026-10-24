@@ -7,6 +7,7 @@ import base64
 from fastapi import Depends, HTTPException, Request, status
 
 from app.billing import require_valid_license
+from app.sso import configured as sso_configured
 from app.users import UserRecord, has_users
 from app.web.session import get_session_user
 from app.webhooks import Webhook, authenticate_webhook_login
@@ -55,7 +56,7 @@ def require_api_token(request: Request) -> UserRecord | None:
     if user:
         request.state.user = user
         return user
-    if not has_users():
+    if not has_users() and not sso_configured():
         request.state.user = None
         return None
     _unauthorized("Нужен вход в консоль")
@@ -80,7 +81,7 @@ def require_camera_auth(request: Request) -> UserRecord | Webhook | None:
         request.state.webhook = hook
         return hook
 
-    if not has_users():
+    if not has_users() and not sso_configured():
         request.state.user = None
         return None
     _unauthorized("Invalid webhook login or password", basic=True)

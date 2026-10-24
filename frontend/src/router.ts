@@ -7,6 +7,7 @@ import HistoryView from "./views/HistoryView.vue";
 import IngestView from "./views/IngestView.vue";
 import LoginView from "./views/LoginView.vue";
 import NodeView from "./views/NodeView.vue";
+import OrganizationsView from "./views/OrganizationsView.vue";
 import OverviewView from "./views/OverviewView.vue";
 import TriggersView from "./views/TriggersView.vue";
 import UsersView from "./views/UsersView.vue";
@@ -36,6 +37,7 @@ export const router = createRouter({
         { path: "history", name: "history", component: HistoryView },
         { path: "preview", name: "preview", component: PreviewLabView },
         { path: "users", name: "users", component: UsersView },
+        { path: "organizations", name: "organizations", component: OrganizationsView },
         { path: "users/new", name: "user-new", component: UserFormView },
         { path: "users/:id", name: "user-edit", component: UserFormView },
         { path: "guide", name: "guide", component: DocsView },

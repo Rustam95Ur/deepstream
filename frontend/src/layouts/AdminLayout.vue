@@ -21,6 +21,7 @@ const titles: Record<string, { title: string; desc: string }> = {
   lab: { title: "Прогон", desc: "Ролики из истории ещё раз как поток" },
   history: { title: "История", desc: "Сработки и отправки" },
   users: { title: "Пользователи", desc: "Доступ в консоль по email" },
+  organizations: { title: "Организации", desc: "Справочник приходит из биллинга" },
   "user-new": { title: "Новый пользователь", desc: "Email и пароль для входа" },
   "user-edit": { title: "Изменить пользователя", desc: "Email, имя и пароль" },
   guide: { title: "Справка", desc: "Как устроена нода и что проверять" },
@@ -43,6 +44,7 @@ const nav = [
   { name: "history", label: "История", icon: "history" },
   { name: "preview", label: "Превью", icon: "box" },
   { name: "users", label: "Пользователи", icon: "user" },
+  { name: "organizations", label: "Организации", icon: "org" },
   { name: "guide", label: "Справка", icon: "book" },
 ] as const;
 
@@ -177,6 +179,10 @@ async function onStop() {
             <svg v-else-if="item.icon === 'link'" width="26" height="26" viewBox="0 0 24 24" fill="none">
               <path d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 5.93" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
               <path d="M14 11a5 5 0 0 0-7.07 0L5.52 12.4a5 5 0 0 0 7.07 7.07L14 18.07" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <svg v-else-if="item.icon === 'org'" width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <path d="M4 20V8l8-4 8 4v12" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+              <path d="M9 20v-5h6v5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
             </svg>
             <svg v-else-if="item.icon === 'user'" width="26" height="26" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6"/>

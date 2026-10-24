@@ -11,12 +11,11 @@ TRIGGER_TYPES: tuple[str, ...] = (
     "smoke",
 )
 
-# Wired today. fall/smoke are saved from the UI but have no model yet.
+# Default: fight only (convergence + vif). presence / stream_silent opt-in.
+# fall/smoke can be saved from the UI but have no model yet.
 DEFAULT_ENABLED_TRIGGERS: tuple[str, ...] = (
-    "presence",
     "convergence",
     "vif",
-    "stream_silent",
 )
 
 

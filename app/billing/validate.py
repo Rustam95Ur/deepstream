@@ -1,4 +1,4 @@
-"""POST api_key + motherboard serial to Nexus Billing."""
+"""POST api_key, module and motherboard serial to Nexus Billing."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ from app.settings import DEFAULT_BILLING_VALIDATE_URL, NodeSettings
 from app.storage import get_store
 
 logger = logging.getLogger(__name__)
+
+BILLING_MODULE = "redshift"
 
 _PLACEHOLDER_SERIALS = frozenset(
     {
@@ -110,7 +112,7 @@ def settings_for_check(
 
 
 def validate_billing_key(settings: NodeSettings | None = None) -> BillingCheck:
-    """POST api_key + motherboard serial to Nexus Billing. Never raises."""
+    """POST api_key, module and motherboard serial to Nexus Billing. Never raises."""
     cfg = settings or get_store().get_settings()
     url = billing_url(cfg)
     api_key = billing_api_key(cfg)
@@ -143,7 +145,7 @@ def validate_billing_key(settings: NodeSettings | None = None) -> BillingCheck:
         return remember(check)
 
     body = json.dumps(
-        {"api_key": api_key, "motherboard_serial": serial},
+        {"api_key": api_key, "module": BILLING_MODULE, "motherboard_serial": serial},
         ensure_ascii=False,
     ).encode("utf-8")
     ok, status, error, data = post_json_data(

@@ -26,6 +26,10 @@ _EXAMPLES = """
   python -m app.cli status
   python -m app.cli cameras list
   python -m app.cli cameras errors
+  python -m app.cli cameras probe cam_gate
+  python -m app.cli cameras gst-probe --uri rtsp://10.0.0.12/stream1
+  python -m app.cli cameras record-mkv cam_gate --codec h265
+  python -m app.cli cameras validate /tmp/clip.mkv
   python -m app.cli cameras add --name Калитка --uri rtsp://10.0.0.12/stream1
   python -m app.cli settings set max_streams=8 enable_clip_record=true
   python -m app.cli webhooks add --name campus --url https://campus.example/api/v1/incidents/ --login node1

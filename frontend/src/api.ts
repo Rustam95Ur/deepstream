@@ -1,4 +1,4 @@
-import type { BillingCheck, Camera, CameraImportResult, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, LabCatalog, NodeSettings, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
+import type { BillingCheck, Camera, CameraImportResult, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, LabCatalog, NodeSettings, OrganizationList, OrganizationSync, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -86,6 +86,18 @@ export const api = {
       body: JSON.stringify({ email, password, password_confirm }),
     }),
   logout: () => request<Session>("/api/v1/auth/logout", { method: "POST" }),
+  otpSetup: () =>
+    request<{ manual_key: string; qr_data_uri: string; issuer: string }>("/api/v1/auth/otp/setup"),
+  confirmOtp: (token: string) =>
+    request<Session>("/api/v1/auth/otp/confirm", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+  verifyOtp: (token: string) =>
+    request<Session>("/api/v1/auth/otp/verify", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
   settings: () => request<NodeSettings>("/api/v1/settings"),
   saveSettings: (body: NodeSettings) =>
     request<NodeSettings>("/api/v1/settings", {
@@ -205,4 +217,6 @@ export const api = {
     }),
   cancelScenarioLab: () =>
     request<LabCatalog>("/api/v1/scenario-lab/cancel", { method: "POST" }),
+  organizations: () => request<OrganizationList>("/api/v1/organizations"),
+  syncOrganizations: () => request<OrganizationSync>("/api/v1/organizations/sync", { method: "POST" }),
 };

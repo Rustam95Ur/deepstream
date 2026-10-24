@@ -334,6 +334,206 @@ def cmd_test(ctx: Ctx, args: argparse.Namespace) -> None:
     )
 
 
+def _resolve_rtsp(args: argparse.Namespace) -> tuple[str, str]:
+    """Return (camera_id_or_empty, rtsp_url) from ``id`` and/or ``--uri``."""
+    from app.cli.console import CliError
+
+    camera_id = (getattr(args, "id", None) or "").strip()
+    uri = (getattr(args, "uri", None) or "").strip()
+    if camera_id and uri:
+        raise CliError("Укажите либо id камеры, либо --uri, не оба сразу")
+    if not camera_id and not uri:
+        raise CliError("Укажите id камеры или --uri rtsp://…")
+    if uri:
+        if not uri.lower().startswith("rtsp://"):
+            raise CliError("--uri должен начинаться с rtsp://")
+        return "", uri
+    cam = get_camera(camera_id)
+    url = (cam.main_uri or "").strip()
+    if not url.lower().startswith("rtsp://"):
+        raise CliError(f"У камеры {camera_id} URI не RTSP: {url or '(пусто)'}")
+    return cam.id, url
+
+
+def cmd_probe(ctx: Ctx, args: argparse.Namespace) -> None:
+    """ffprobe → fallback ffmpeg: resolution and fps."""
+    from app.cli.console import emit_json
+    from app.services.gstreamer_probe import mask_rtsp_credentials
+    from app.services.rtsp_probe import probe_rtsp_url
+
+    camera_id, url = _resolve_rtsp(args)
+    result = probe_rtsp_url(url, timeout_sec=float(args.timeout))
+    payload: dict[str, Any] = {
+        "ok": bool(result.get("ok")),
+        "camera_id": camera_id or None,
+        "rtsp_url": mask_rtsp_credentials(url),
+        **{k: v for k, v in result.items() if k != "ok"},
+    }
+    if ctx.as_json:
+        emit_json(payload)
+    elif payload["ok"]:
+        emit_result(
+            ctx,
+            "поток отвечает",
+            {
+                "camera_id": camera_id or "",
+                "rtsp_url": payload["rtsp_url"],
+                "width": result.get("resolution_width"),
+                "height": result.get("resolution_height"),
+                "fps": result.get("fps"),
+            },
+        )
+    else:
+        emit_result(
+            ctx,
+            "поток не отвечает",
+            {
+                "camera_id": camera_id or "",
+                "rtsp_url": payload["rtsp_url"],
+                "error": result.get("error") or "",
+            },
+        )
+    if not payload["ok"]:
+        raise SystemExit(1)
+
+
+def cmd_gst_probe(ctx: Ctx, args: argparse.Namespace) -> None:
+    """GStreamer rtspsrc → fakesink diagnostics."""
+    from app.cli.console import emit_json
+    from app.services.gstreamer_probe import probe_rtsp_gstreamer
+
+    camera_id, url = _resolve_rtsp(args)
+    result = probe_rtsp_gstreamer(
+        url,
+        duration_sec=float(args.duration),
+        startup_timeout_sec=float(args.startup_timeout),
+    )
+    data = result.to_dict()
+    data["camera_id"] = camera_id or None
+    if ctx.as_json:
+        emit_json(data)
+    else:
+        summary = {
+            "camera_id": camera_id or "",
+            "rtsp_url": result.rtsp_url_masked,
+            "ok": result.ok,
+            "codec": result.video_codec or "",
+            "playing": result.reached_playing,
+            "video_linked": result.video_linked,
+            "buffers": result.buffer_count,
+            "elapsed_sec": result.elapsed_sec,
+            "pipeline": result.pipeline_state,
+            "error": result.error or "",
+            "error_detail": (result.error_detail or "")[:300],
+        }
+        emit_result(ctx, "GStreamer probe ok" if result.ok else "GStreamer probe fail", summary)
+        if args.verbose and result.messages:
+            print("\nсообщения:")
+            for msg in result.messages:
+                print(f"  [{msg.elapsed_ms:>5}ms] {msg.level} {msg.source}: {msg.text}")
+    if not result.ok:
+        raise SystemExit(1)
+
+
+def cmd_record_mkv(ctx: Ctx, args: argparse.Namespace) -> None:
+    """Short gst-launch TCP recording to MKV (+ optional validation)."""
+    from pathlib import Path
+
+    from app.cli.console import CliError, emit_json
+    from app.services.gstreamer_probe import mask_rtsp_credentials
+    from app.services.tcp_mkv_recording import (
+        record_camera_tcp_mkv_check,
+        record_rtsp_tcp_mkv,
+    )
+
+    camera_id, url = _resolve_rtsp(args)
+    codec = (args.codec or "h265").strip().lower()
+    if codec not in {"h264", "h265", "avc", "hevc"}:
+        raise CliError("--codec: h264 или h265")
+    if codec == "hevc":
+        codec = "h265"
+    if codec == "avc":
+        codec = "h264"
+    out = Path(args.out) if args.out else None
+    validate = not args.no_validate
+    if camera_id and out is None:
+        result = record_camera_tcp_mkv_check(
+            camera_id,
+            url,
+            duration_sec=int(args.duration),
+            validate=validate,
+            codec=codec,
+        )
+    else:
+        result = record_rtsp_tcp_mkv(
+            url,
+            duration_sec=int(args.duration),
+            output_path=out,
+            validate=validate,
+            codec=codec,
+        )
+    payload = result.as_dict()
+    payload["camera_id"] = camera_id or None
+    payload["rtsp_url"] = mask_rtsp_credentials(url)
+    if ctx.as_json:
+        emit_json(payload)
+    else:
+        emit_result(
+            ctx,
+            "запись ok" if result.ok else "запись fail",
+            {
+                "camera_id": camera_id or "",
+                "rtsp_url": payload["rtsp_url"],
+                "output": result.output_path or "",
+                "size_bytes": result.file_size_bytes,
+                "duration_sec": result.duration_sec,
+                "error": result.error or "",
+                "validation": (
+                    result.validation.reason if result.validation is not None else ""
+                ),
+            },
+        )
+        if args.verbose and result.stderr_tail:
+            print("\nstderr (хвост):")
+            print(result.stderr_tail)
+    if not result.ok:
+        raise SystemExit(1)
+
+
+def cmd_validate(ctx: Ctx, args: argparse.Namespace) -> None:
+    """ffprobe structure + ghosting check on a local video file."""
+    from pathlib import Path
+
+    from app.cli.console import CliError, emit_json
+    from app.services.video_validation import validate_video
+
+    path = Path(args.path)
+    if not path.exists():
+        raise CliError(f"файл не найден: {path}")
+    result = validate_video(path)
+    data = result.as_dict()
+    data["path"] = str(path)
+    if ctx.as_json:
+        emit_json(data)
+    else:
+        emit_result(
+            ctx,
+            "валидация ok" if result.ok else "валидация fail",
+            {
+                "path": str(path),
+                "reason": result.reason,
+                "duration_sec": result.duration_sec,
+                "width": result.width,
+                "height": result.height,
+                "ffprobe_ok": result.ffprobe_ok,
+                "ghosting_ok": result.ghosting_ok,
+                "details": result.details or {},
+            },
+        )
+    if not result.ok:
+        raise SystemExit(1)
+
+
 def _triggers(parser: argparse.ArgumentParser, *, inherit: bool) -> None:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--triggers", metavar="LIST", help=_TRIGGER_HELP)
@@ -353,7 +553,10 @@ def _triggers(parser: argparse.ArgumentParser, *, inherit: bool) -> None:
 def register(sub: argparse._SubParsersAction) -> None:
     parser = sub.add_parser(
         "cameras",
-        help="Камеры: список, ошибки потока, создание, правка, отправка в вебхук, удаление",
+        help=(
+            "Камеры: список, probe/gst-probe/record-mkv, ошибки потока, "
+            "создание, правка, отправка в вебхук, удаление"
+        ),
     )
     commands = parser.add_subparsers(dest="action", required=True)
 
@@ -462,3 +665,98 @@ def register(sub: argparse._SubParsersAction) -> None:
         "--count", type=int, required=True, help="Сколько камер, от 1 до 128"
     )
     test.set_defaults(func=cmd_test)
+
+    probe = commands.add_parser(
+        "probe",
+        help="Проверка RTSP: ffprobe, при ошибке — ffmpeg (разрешение и fps)",
+    )
+    probe.add_argument(
+        "id",
+        nargs="?",
+        default="",
+        help="id камеры из реестра. Либо укажите --uri",
+    )
+    probe.add_argument("--uri", default="", help="rtsp://… напрямую, без камеры в БД")
+    probe.add_argument(
+        "--timeout",
+        type=float,
+        default=20.0,
+        help="Таймаут пробы в секундах (по умолчанию 20)",
+    )
+    probe.set_defaults(func=cmd_probe)
+
+    gst = commands.add_parser(
+        "gst-probe",
+        help="Диагностика RTSP через GStreamer (rtspsrc → fakesink)",
+    )
+    gst.add_argument(
+        "id",
+        nargs="?",
+        default="",
+        help="id камеры из реестра. Либо укажите --uri",
+    )
+    gst.add_argument("--uri", default="", help="rtsp://… напрямую, без камеры в БД")
+    gst.add_argument(
+        "--duration",
+        type=float,
+        default=10.0,
+        help="Сколько секунд слушать поток (3–30, по умолчанию 10)",
+    )
+    gst.add_argument(
+        "--startup-timeout",
+        type=float,
+        default=5.0,
+        help="Сколько ждать PLAYING (по умолчанию 5)",
+    )
+    gst.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Печатать сообщения шины GStreamer",
+    )
+    gst.set_defaults(func=cmd_gst_probe)
+
+    record = commands.add_parser(
+        "record-mkv",
+        help="Короткая запись RTSP в MKV через gst-launch (TCP, без перекодирования)",
+    )
+    record.add_argument(
+        "id",
+        nargs="?",
+        default="",
+        help="id камеры из реестра. Либо укажите --uri",
+    )
+    record.add_argument("--uri", default="", help="rtsp://… напрямую, без камеры в БД")
+    record.add_argument(
+        "--duration",
+        type=int,
+        default=12,
+        help="Длительность записи в секундах (5–60, по умолчанию 12)",
+    )
+    record.add_argument(
+        "--codec",
+        default="h265",
+        help="h264 или h265 (по умолчанию h265)",
+    )
+    record.add_argument(
+        "--out",
+        default="",
+        help="Путь к .mkv. Без флага — временный файл или data/.camera_recording_checks",
+    )
+    record.add_argument(
+        "--no-validate",
+        action="store_true",
+        help="Не гонять ffprobe/ghosting после записи",
+    )
+    record.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Печатать хвост stderr gst-launch",
+    )
+    record.set_defaults(func=cmd_record_mkv)
+
+    validate = commands.add_parser(
+        "validate",
+        help="Проверка локального видео: структура ffprobe + ghosting I/P",
+    )
+    validate.add_argument("path", help="Путь к файлу (mkv/mp4/…)")
+    validate.set_defaults(func=cmd_validate)

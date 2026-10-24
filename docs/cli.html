@@ -316,6 +316,39 @@ python -m app.cli cameras delete cam_gate --yes</code></pre>
           <pre><code>python -m app.cli cameras test --uri rtsp://127.0.0.1:8554/cam1 --count 2</code></pre>
         </div>
         <p>Создаёт <code>test_1</code>, <code>test_2</code>, … на один и тот же адрес, в пределах <code>max_streams</code>. <code>--count</code> от 1 до 128.</p>
+
+        <h3>Probe RTSP (ffprobe / ffmpeg)</h3>
+        <p>
+          Читает разрешение и fps. Сначала ffprobe, при ошибке — разбор stderr ffmpeg.
+          Id камеры или <code>--uri</code>. При неуспехе код выхода <code>1</code>.
+        </p>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli cameras probe cam_gate
+python -m app.cli cameras probe --uri rtsp://10.0.0.12/stream1 --timeout 15
+python -m app.cli --json cameras probe cam_gate</code></pre>
+        </div>
+
+        <h3>GStreamer probe</h3>
+        <p>
+          Короткий пайплайн <code>rtspsrc → depay/parse → fakesink</code>: PLAYING, кодек, буферы, сообщения шины.
+          Нужны системный GStreamer и PyGObject. <code>--verbose</code> печатает лог шины.
+        </p>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli cameras gst-probe cam_gate
+python -m app.cli cameras gst-probe --uri rtsp://10.0.0.12/stream1 --duration 8 --verbose</code></pre>
+        </div>
+
+        <h3>Запись MKV (gst-launch)</h3>
+        <p>
+          TCP-запись без перекодирования в Matroska, затем проверка ffprobe + ghosting
+          (отключается <code>--no-validate</code>). Без <code>--out</code> файл кладётся в
+          <code>data/.camera_recording_checks</code> (для id камеры) или во временный каталог.
+        </p>
+        <div class="cmd"><button class="copy" type="button">Копировать</button>
+          <pre><code>python -m app.cli cameras record-mkv cam_gate --codec h265
+python -m app.cli cameras record-mkv --uri rtsp://10.0.0.12/stream1 --duration 10 --out /tmp/cam.mkv
+python -m app.cli cameras validate /tmp/cam.mkv</code></pre>
+        </div>
       </section>
 
       <section id="errors">
@@ -382,7 +415,7 @@ python -m app.cli cameras webhook --all --yes</code></pre>
 python -m app.cli settings keys
 python -m app.cli settings set max_streams=8 node_name="Узел двор"
 python -m app.cli settings set enable_clip_record=true cooldown_s=30
-python -m app.cli settings set enabled_triggers=presence,convergence,vif,stream_silent
+python -m app.cli settings set enabled_triggers=convergence,vif
 python -m app.cli settings set billing_api_key=XXXX --reveal</code></pre>
         </div>
         <table>
