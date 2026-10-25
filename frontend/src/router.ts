@@ -43,6 +43,7 @@ export const router = createRouter({
         { path: "guide", name: "guide", component: DocsView },
       ],
     },
+    { path: "/:pathMatch(.*)*", redirect: () => ({ name: "overview" }) },
   ],
 });
 
