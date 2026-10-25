@@ -20,6 +20,12 @@ def organization_ready(billing_id: str) -> bool:
         return row is not None and bool(row.is_active)
 
 
+def organization_open(billing_id: str) -> bool:
+    if not (billing_id or "").strip():
+        return True
+    return organization_ready(billing_id)
+
+
 def console_user(account: SsoAccount) -> UserRecord:
     now = utcnow()
     return UserRecord(
@@ -34,6 +40,6 @@ def console_user(account: SsoAccount) -> UserRecord:
 
 def user_from_token(token: str) -> UserRecord | None:
     account = introspect(token)
-    if account is None or not organization_ready(account.organization_id):
+    if account is None or not organization_open(account.organization_id):
         return None
     return console_user(account)

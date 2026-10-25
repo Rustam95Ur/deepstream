@@ -11,7 +11,7 @@ from app.schemas import LoginIn, SessionOut
 from app.storage import get_store
 from app.sso import SsoChallenge, SsoError, configured as sso_configured
 from app.sso import fetch_otp_setup, login as sso_login, submit_otp
-from app.sso_user import ORG_UNAVAILABLE, console_user, organization_ready
+from app.sso_user import ORG_UNAVAILABLE, console_user, organization_open
 from app.users import (
     EmailTakenError,
     UserRecord,
@@ -108,11 +108,11 @@ def auth_login(body: LoginIn, response: Response) -> SessionOut:
     except SsoError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from None
     if isinstance(account, SsoChallenge):
-        if not organization_ready(account.organization_id):
+        if not organization_open(account.organization_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ORG_UNAVAILABLE)
         set_sso_otp_cookie(response, account.token, setup=account.setup)
         return _session_out(authenticated=False, otp_pending=True, otp_setup=account.setup)
-    if not organization_ready(account.organization_id):
+    if not organization_open(account.organization_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ORG_UNAVAILABLE)
     set_sso_cookie(response, account.token)
     return _session_out(user=console_user(account))
@@ -126,7 +126,7 @@ def _finish_sso_otp(request: Request, response: Response, code: str) -> SessionO
         account = submit_otp(pending[0], code)
     except SsoError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from None
-    if not organization_ready(account.organization_id):
+    if not organization_open(account.organization_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ORG_UNAVAILABLE)
     set_sso_cookie(response, account.token)
     return _session_out(user=console_user(account))
