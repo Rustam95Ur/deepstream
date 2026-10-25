@@ -51,6 +51,10 @@ def get_session_user(request: Request) -> UserRecord | None:
         return None
     if cookie.startswith(SSO_PREFIX):
         return user_from_token(cookie[len(SSO_PREFIX) :])
+    from app.sso import configured as sso_configured
+
+    if sso_configured():
+        return None
     user_id, sep, digest = cookie.partition(".")
     if not sep or not user_id or not digest:
         return None

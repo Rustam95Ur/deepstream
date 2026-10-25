@@ -55,7 +55,7 @@ def _session_out(
     valid = license_ok()
     return SessionOut(
         authenticated=authed,
-        setup=not has_users() and not sso_configured(),
+        setup=not sso_configured() and not has_users(),
         user_id=user.id if user else "",
         email=user.email if user else "",
         name=user.name if user else "",
@@ -99,14 +99,6 @@ def _login_local(body: LoginIn, response: Response) -> SessionOut:
     return _session_out(user=user)
 
 
-def _login_node_operator(body: LoginIn, response: Response, exc: SsoError) -> SessionOut:
-    user = get_user_by_email(body.email)
-    if user and verify_password(body.password, user.password_hash):
-        set_session_cookie(response, user)
-        return _session_out(user=user)
-    raise HTTPException(status_code=exc.status, detail=exc.detail)
-
-
 @router.post("/login", response_model=SessionOut)
 def auth_login(body: LoginIn, response: Response) -> SessionOut:
     if not sso_configured():
@@ -114,9 +106,7 @@ def auth_login(body: LoginIn, response: Response) -> SessionOut:
     try:
         account = sso_login(body.email, body.password)
     except SsoError as exc:
-        if exc.status == 403:
-            raise HTTPException(status_code=exc.status, detail=exc.detail) from None
-        return _login_node_operator(body, response, exc)
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from None
     if isinstance(account, SsoChallenge):
         if not organization_ready(account.organization_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ORG_UNAVAILABLE)

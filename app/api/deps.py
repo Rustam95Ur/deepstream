@@ -56,7 +56,7 @@ def require_api_token(request: Request) -> UserRecord | None:
     if user:
         request.state.user = user
         return user
-    if not has_users() and not sso_configured():
+    if not sso_configured() and not has_users():
         request.state.user = None
         return None
     _unauthorized("Нужен вход в консоль")
@@ -81,7 +81,7 @@ def require_camera_auth(request: Request) -> UserRecord | Webhook | None:
         request.state.webhook = hook
         return hook
 
-    if not has_users() and not sso_configured():
+    if not sso_configured() and not has_users():
         request.state.user = None
         return None
     _unauthorized("Invalid webhook login or password", basic=True)

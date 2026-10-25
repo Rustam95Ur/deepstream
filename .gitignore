@@ -20,3 +20,5 @@ frontend/dist/
 deploy/rtsp-test/video/*
 !deploy/rtsp-test/video/.gitkeep
 .idea/
+export/
+exports-tmp/
