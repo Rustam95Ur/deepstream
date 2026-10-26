@@ -51,6 +51,13 @@ def get_session_user(request: Request) -> UserRecord | None:
         return None
     if cookie.startswith(SSO_PREFIX):
         return user_from_token(cookie[len(SSO_PREFIX) :])
+    from app.shared_cookie import read_shared_cookie
+
+    shared = read_shared_cookie(request)
+    if shared:
+        user = user_from_token(shared)
+        if user is not None:
+            return user
     from app.sso import configured as sso_configured
 
     if sso_configured():
@@ -94,6 +101,8 @@ def set_sso_otp_cookie(response: Response, token: str, *, setup: bool) -> None:
 
 
 def set_sso_cookie(response: Response, token: str) -> None:
+    from app.shared_cookie import set_shared_cookie
+
     response.set_cookie(
         COOKIE_NAME,
         f"{SSO_PREFIX}{token}",
@@ -102,7 +111,11 @@ def set_sso_cookie(response: Response, token: str) -> None:
         samesite="lax",
         path="/",
     )
+    set_shared_cookie(response, token)
 
 
 def clear_session_cookie(response: Response) -> None:
+    from app.shared_cookie import clear_shared_cookie
+
     response.delete_cookie(COOKIE_NAME, path="/")
+    clear_shared_cookie(response)

@@ -129,6 +129,17 @@ def introspect(token: str) -> SsoAccount | None:
     return account
 
 
+def redeem(code: str) -> SsoAccount | None:
+    status, payload = _post_json("/api/v1/auth/handover", {"code": code})
+    if status != 200 or not payload.get("active"):
+        return None
+    token = str(payload.get("access_token") or "")
+    account = _from_introspect(token, payload)
+    if account is None or MODULE not in account.modules:
+        return None
+    return account
+
+
 def _from_login(payload: dict) -> SsoAccount:
     account = payload.get("account") if isinstance(payload.get("account"), dict) else {}
     token = str(payload.get("access_token") or "")

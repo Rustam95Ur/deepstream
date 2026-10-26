@@ -30,6 +30,8 @@ export interface Session {
   license_reason: string;
   otp_pending: boolean;
   otp_setup: boolean;
+  enter_url: string;
+  logout_url: string;
 }
 
 export interface NodeSettings {

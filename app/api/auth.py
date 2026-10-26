@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.schemas import LoginIn, SessionOut
 from app.storage import get_store
 from app.sso import SsoChallenge, SsoError, configured as sso_configured
-from app.sso import fetch_otp_setup, login as sso_login, submit_otp
+from app.sso import fetch_otp_setup, login as sso_login, redeem, submit_otp
 from app.sso_user import ORG_UNAVAILABLE, console_user, organization_open
 from app.users import (
     EmailTakenError,
@@ -53,6 +53,8 @@ def _session_out(
     settings = get_store().get_settings()
     authed = bool(user) if authenticated is None else authenticated
     valid = license_ok()
+    from app.shared_cookie import enter_url, logout_url
+
     return SessionOut(
         authenticated=authed,
         setup=not sso_configured() and not has_users(),
@@ -65,6 +67,8 @@ def _session_out(
         license_reason="" if valid else license_lock_detail(),
         otp_pending=otp_pending,
         otp_setup=otp_setup,
+        enter_url="" if authed or otp_pending else enter_url("redshift"),
+        logout_url=logout_url(),
     )
 
 
@@ -165,3 +169,18 @@ def otp_verify(body: OtpTokenIn, request: Request, response: Response) -> Sessio
 def auth_logout(response: Response) -> SessionOut:
     clear_session_cookie(response)
     return _session_out(authenticated=False)
+
+
+class CodeIn(BaseModel):
+    code: str = Field(min_length=1, max_length=4096)
+
+
+@router.post("/sso/callback", response_model=SessionOut)
+def sso_callback(body: CodeIn, response: Response) -> SessionOut:
+    account = redeem(body.code)
+    if account is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Сессия SSO не найдена")
+    if not organization_open(account.organization_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ORG_UNAVAILABLE)
+    set_sso_cookie(response, account.token)
+    return _session_out(user=console_user(account))

@@ -87,6 +87,8 @@ services:
       NEXUS_DS_PORT: "8080"
       NEXUS_DS_ROLE: api
       NEXUS_SSO_URL: ${NEXUS_SSO_URL:-http://host.docker.internal:8090}
+      PANEL_URL: ${PANEL_URL:-}
+      SESSION_COOKIE_DOMAIN: ${SESSION_COOKIE_DOMAIN:-}
       NEXUS_DS_LOG_LEVEL: ${NEXUS_DS_LOG_LEVEL:-INFO}
       NEXUS_DS_DATA_DIR: /data/nexus_deepstream
       NEXUS_DS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nexus}:${POSTGRES_PASSWORD:-nexus}@pgbouncer:5432/${POSTGRES_DB:-nexus_deepstream}

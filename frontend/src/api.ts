@@ -80,6 +80,11 @@ async function downloadFile(path: string, filename: string): Promise<void> {
 
 export const api = {
   session: () => request<Session>("/api/v1/auth/session"),
+  redeem: (code: string) =>
+    request<Session>("/api/v1/auth/sso/callback", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
   login: (email: string, password: string, password_confirm = "") =>
     request<Session>("/api/v1/auth/login", {
       method: "POST",

@@ -78,7 +78,11 @@ function onDocClick() {
 }
 
 async function logout() {
-  await api.logout();
+  const session = await api.logout();
+  if (session.logout_url) {
+    window.location.assign(session.logout_url);
+    return;
+  }
   await router.push({ name: "login" });
 }
 

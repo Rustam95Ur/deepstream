@@ -48,8 +48,25 @@ export const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+  if (typeof to.query.code === "string" && to.query.code) {
+    try {
+      await api.redeem(to.query.code);
+    } catch {
+      return { name: "login", query: { local: "1" }, replace: true };
+    }
+    return { name: "overview", replace: true };
+  }
   try {
     const session = await api.session();
+    if (
+      !session.authenticated &&
+      !session.otp_pending &&
+      session.enter_url &&
+      to.query.local !== "1"
+    ) {
+      window.location.assign(session.enter_url);
+      return false;
+    }
     if (to.matched.some((record) => record.meta.auth) && !session.authenticated) {
       return { name: "login" };
     }
