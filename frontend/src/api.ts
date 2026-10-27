@@ -46,6 +46,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const data = await res.json().catch(() => null);
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/api/v1/auth/")) {
+      window.location.assign("/login");
+    }
     throw new ApiError(res.status, formatDetail(data, res.statusText || "Ошибка сервера"));
   }
   return data as T;

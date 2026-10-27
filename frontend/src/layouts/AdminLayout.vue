@@ -48,8 +48,27 @@ const nav = [
   { name: "guide", label: "Справка", icon: "book" },
 ] as const;
 
+let accessTimer: ReturnType<typeof setInterval> | null = null;
+
+async function leaveIfClosed() {
+  try {
+    const session = await api.session();
+    if (session.authenticated) return;
+    if (session.enter_url) {
+      window.location.assign(session.enter_url);
+      return;
+    }
+  } catch {
+    /* the next navigation sends the person to the login page */
+  }
+  await router.push({ name: "login" });
+}
+
 onMounted(async () => {
   document.addEventListener("click", onDocClick);
+  accessTimer = setInterval(() => {
+    void leaveIfClosed();
+  }, 30000);
   try {
     await loadConsole();
   } catch (err) {
@@ -67,6 +86,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener("click", onDocClick);
+  if (accessTimer) clearInterval(accessTimer);
   if (workerTimer) {
     clearInterval(workerTimer);
     workerTimer = null;
