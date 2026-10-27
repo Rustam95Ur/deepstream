@@ -67,6 +67,7 @@ def _session_out(
         license_reason="" if valid else license_lock_detail(),
         otp_pending=otp_pending,
         otp_setup=otp_setup,
+        sso=sso_configured(),
         enter_url="" if authed or otp_pending else enter_url("redshift"),
         logout_url=logout_url(),
     )

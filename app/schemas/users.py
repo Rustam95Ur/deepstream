@@ -86,5 +86,6 @@ class SessionOut(BaseModel):
     license_reason: str = ""
     otp_pending: bool = False
     otp_setup: bool = False
+    sso: bool = False
     enter_url: str = ""
     logout_url: str = ""

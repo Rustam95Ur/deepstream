@@ -28,7 +28,14 @@ const titles: Record<string, { title: string; desc: string }> = {
   preview: { title: "Превью", desc: "Кадр инцидента и красные квадраты" },
 };
 
-const page = computed(() => titles[String(route.name)] || titles.overview);
+const page = computed(() => {
+  const item = titles[String(route.name)] || titles.overview;
+  if (route.name !== "organizations") return item;
+  return {
+    ...item,
+    desc: store.session?.sso ? "Справочник приходит из биллинга" : "Локальные организации этой установки",
+  };
+});
 const licenseLocked = computed(() => store.session?.license_valid === false);
 const bannerError = computed(() => store.error || store.worker?.last_error || "");
 

@@ -1,4 +1,4 @@
-import type { BillingCheck, Camera, CameraImportResult, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, LabCatalog, NodeSettings, OrganizationList, OrganizationSync, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
+import type { BillingCheck, Camera, CameraImportResult, CameraList, CameraQuery, CameraTestBatch, CameraSyncPush, HistoryPage, HistoryQuery, LabCatalog, NodeSettings, Organization, OrganizationList, OrganizationSync, OutboundJob, SendEvent, Session, TriggerEvent, User, UserList, UserQuery, VideoHealth, Webhook, WebhookIn, WorkerStatus } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -226,5 +226,7 @@ export const api = {
   cancelScenarioLab: () =>
     request<LabCatalog>("/api/v1/scenario-lab/cancel", { method: "POST" }),
   organizations: () => request<OrganizationList>("/api/v1/organizations"),
+  createOrganization: (body: { name: string; description?: string }) =>
+    request<Organization>("/api/v1/organizations", { method: "POST", body: JSON.stringify(body) }),
   syncOrganizations: () => request<OrganizationSync>("/api/v1/organizations/sync", { method: "POST" }),
 };

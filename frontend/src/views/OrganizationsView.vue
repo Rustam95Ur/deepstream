@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { ApiError, api } from "../api";
 import { flash, store } from "../store";
 import type { Organization } from "../types";
@@ -7,6 +7,10 @@ import type { Organization } from "../types";
 const rows = ref<Organization[]>([]);
 const loading = ref(false);
 const syncing = ref(false);
+const saving = ref(false);
+const name = ref("");
+const description = ref("");
+const cloud = computed(() => Boolean(store.session?.sso));
 
 async function load() {
   loading.value = true;
@@ -36,6 +40,24 @@ async function syncFromBilling() {
   }
 }
 
+async function createLocal() {
+  const next = name.value.trim();
+  if (!next || saving.value) return;
+  saving.value = true;
+  store.error = "";
+  try {
+    await api.createOrganization({ name: next, description: description.value.trim() });
+    name.value = "";
+    description.value = "";
+    flash("Организация создана");
+    await load();
+  } catch (err) {
+    store.error = err instanceof ApiError ? err.message : "Не удалось создать организацию";
+  } finally {
+    saving.value = false;
+  }
+}
+
 onMounted(load);
 </script>
 
@@ -44,10 +66,21 @@ onMounted(load);
     <div class="card-head">
       <div>
         <h2>Организации ({{ rows.length }})</h2>
-        <p class="lede">Название и статус приходят из биллинга. Здесь их нельзя создать.</p>
+        <p class="lede">
+          {{
+            cloud
+              ? "Название и статус приходят из биллинга. Здесь их нельзя создать."
+              : "Организации хранятся в локальной базе. Справочник биллинга не используется."
+          }}
+        </p>
       </div>
     </div>
     <div class="card-body">
+      <form v-if="!cloud" class="row" @submit.prevent="createLocal">
+        <input v-model="name" placeholder="Название" required />
+        <input v-model="description" placeholder="Описание" />
+        <button type="submit" :disabled="saving">{{ saving ? "Сохранение…" : "Добавить" }}</button>
+      </form>
       <div v-if="rows.length" class="table-wrap">
         <table>
           <thead>
@@ -62,9 +95,17 @@ onMounted(load);
           </tbody>
         </table>
       </div>
-      <p v-else class="lede">{{ loading ? "Загрузка…" : "Организаций нет. Заберите справочник из биллинга." }}</p>
+      <p v-else class="lede">
+        {{
+          loading
+            ? "Загрузка…"
+            : cloud
+              ? "Организаций нет. Заберите справочник из биллинга."
+              : "Организаций пока нет."
+        }}
+      </p>
     </div>
-    <div class="card-foot end">
+    <div v-if="cloud" class="card-foot end">
       <button type="button" :disabled="syncing" @click="syncFromBilling">
         {{ syncing ? "Обновление…" : "Забрать из биллинга" }}
       </button>

@@ -37,6 +37,10 @@ def organizations_url(validate_url: str) -> str:
 
 
 def sync_organizations() -> dict[str, Any]:
+    from app.sso import configured as sso_configured
+
+    if not sso_configured():
+        return {"ok": True, "synced": 0, "deactivated": 0, "detail": ""}
     try:
         return _sync()
     except Exception:

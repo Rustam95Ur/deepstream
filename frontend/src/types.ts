@@ -30,6 +30,7 @@ export interface Session {
   license_reason: string;
   otp_pending: boolean;
   otp_setup: boolean;
+  sso: boolean;
   enter_url: string;
   logout_url: string;
 }
